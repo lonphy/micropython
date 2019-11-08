@@ -251,6 +251,6 @@ void SystemInit_ExtMemCtl(void) {
 
     /*----------------  Enable FSMC Bank1_3 (for NE3) Bank (0x6800 0000)-----------------------*/
     FSMC_Bank1->BTCR[4U] = 0x00001091U; /* control register, [ WREN(b12), MWID(b4~b5), MBKEN(b0)]*/
-    FSMC_Bank1->BTCR[5U] = 0x00110212U; /* timing register, [CLKDIV=1, BUSTURN=1, DATAST=2, ADDHLD=1, ADDSET=2] */
+    FSMC_Bank1->BTCR[5U] = 0x00000200U; /* timing register, [CLKDIV=0, BUSTURN=0, DATAST=2, ADDHLD=0, ADDSET=0] */
 }
 #endif
