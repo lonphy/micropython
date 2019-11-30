@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2019 Damien P. George
+ * Copyright (c) 2019-2099 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,38 +27,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Use this to tag global static data in RAM that doesn't need to be zeroed on startup
-#define SECTION_NOZERO_BSS __attribute__((section(".nozero_bss")))
-
-#define ELEM_DATA_SIZE  (1024)
-#define ELEM_DATA_START (&_estack[0])
-#define ELEM_DATA_MAX   (&_estack[ELEM_DATA_SIZE])
-
-#define GPIO_AF10_USB     10
-
-enum {
-    ELEM_TYPE_END = 1,
-    ELEM_TYPE_MOUNT,
-    ELEM_TYPE_FSLOAD,
-};
-
-enum {
-    ELEM_MOUNT_FAT = 1,
-};
-
-typedef struct _fsload_bdev_t {
-    uint32_t base_addr;
-    uint32_t byte_len;
-} fsload_bdev_t;
-
-extern uint8_t _estack[ELEM_DATA_SIZE];
-
-uint32_t get_le32(const uint8_t *b);
-void led_state_all(unsigned int mask);
-
-int do_page_erase(uint32_t addr, uint32_t *next_addr);
-void do_read(uint32_t addr, int len, uint8_t *buf);
-int do_write(uint32_t addr, const uint8_t *src8, size_t len);
-
-const uint8_t *elem_search(const uint8_t *elem, uint8_t elem_id);
-int fsload_process(void);
+void    mp_norflash_init(void);
+uint8_t mp_norflash_erase_chip(void);
+int     mp_norflash_erase_block(uint32_t addr);
+void    mp_norflash_read(uint32_t addr, size_t len, uint8_t *dest);
+int     mp_norflash_write(uint32_t addr, size_t len, const uint8_t *src);
+void    mp_norflash_mspwait(uint32_t timeout);
+uint8_t mp_norflash_get_status(uint32_t addr, uint32_t timeout);

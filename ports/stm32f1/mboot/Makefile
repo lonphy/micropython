@@ -1,16 +1,12 @@
 # Select the board to build for: if not given on the command line,
-# then default to PYBV10.
-BOARD ?= PYBV10
+# then default to MPY_ST103.
+BOARD ?= MPY_ST103
 
 # If the build directory is not given, make it reflect the board name.
 BUILD ?= build-$(BOARD)
 
 # Allow the directory containing the board configuration to be specified
 BOARD_DIR ?= $(abspath ../boards/$(BOARD))
-
-# Set USE_MBOOT to 1 so that TEXT0_ADDR gets set properly for those boards
-# that can be built with or without mboot.
-USE_MBOOT ?= 1
 
 # Sanity check that the board configuration directory exists
 ifeq ($(wildcard $(BOARD_DIR)/.),)
@@ -20,16 +16,16 @@ endif
 include ../../../py/mkenv.mk
 include $(BOARD_DIR)/mpconfigboard.mk
 
-CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32$(MCU_SERIES_UPPER)xx/Include
-MCU_SERIES_UPPER = $(shell echo $(MCU_SERIES) | tr '[:lower:]' '[:upper:]')
-HAL_DIR=lib/stm32lib/STM32$(MCU_SERIES_UPPER)xx_HAL_Driver
+CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32F1xx/Include
+HAL_DIR=lib/stm32lib/STM32F1xx_HAL_Driver
 USBDEV_DIR=usbdev
 DFU=$(TOP)/tools/dfu.py
 PYDFU ?= $(TOP)/tools/pydfu.py
 DEVICE=0483:df11
 STFLASH ?= st-flash
 OPENOCD ?= openocd
-OPENOCD_CONFIG ?= boards/openocd_stm32f4.cfg
+OPENOCD_CONFIG ?= ../boards/openocd_stm32f1.cfg
+STARTUP_FILE ?= lib/stm32lib/CMSIS/STM32F1xx/Source/Templates/gcc/startup_$(CMSIS_MCU_LOWER).o
 
 CROSS_COMPILE = arm-none-eabi-
 
@@ -45,20 +41,18 @@ INC += -I../$(USBDEV_DIR)/core/inc -I../$(USBDEV_DIR)/class/inc
 # Basic Cortex-M flags
 CFLAGS_CORTEX_M = -mthumb
 
+
 # Options for particular MCU series
-CFLAGS_MCU_f4 = $(CFLAGS_CORTEX_M) -mtune=cortex-m4 -mcpu=cortex-m4
-CFLAGS_MCU_f7 = $(CFLAGS_CORTEX_M) -mtune=cortex-m7 -mcpu=cortex-m7
-CFLAGS_MCU_h7 = $(CFLAGS_CORTEX_M) -mtune=cortex-m7 -mcpu=cortex-m7
-CFLAGS_MCU_l4 = $(CFLAGS_CORTEX_M) -mtune=cortex-m4 -mcpu=cortex-m4
+CFLAGS_MCU_f1 = $(CFLAGS_CORTEX_M) -mtune=cortex-m3 -mcpu=cortex-m3
 
 CFLAGS = $(INC) -Wall -Wpointer-arith -Werror -std=gnu99 -nostdlib $(CFLAGS_MOD) $(CFLAGS_EXTRA)
 CFLAGS += -D$(CMSIS_MCU)
-CFLAGS += $(CFLAGS_MCU_$(MCU_SERIES))
+CFLAGS += $(CFLAGS_MCU_f1)
 CFLAGS += $(COPT)
 CFLAGS += -I$(BOARD_DIR)
 CFLAGS += -DBOARD_$(BOARD)
 CFLAGS += -DAPPLICATION_ADDR=$(TEXT0_ADDR)
-CFLAGS += -DFFCONF_H=\"ports/stm32/mboot/ffconf.h\"
+CFLAGS += -DFFCONF_H=\"ports/stm32f1/mboot/ffconf.h\"
 
 LDFLAGS = -nostdlib -L . -T stm32_generic.ld -Map=$(@:.elf=.map) --cref
 LIBS = $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
@@ -89,22 +83,16 @@ SRC_C = \
 	elem.c \
 	fsload.c \
 	diskio.c \
-	drivers/bus/softspi.c \
-	drivers/bus/softqspi.c \
-	drivers/memory/spiflash.c \
-	ports/stm32/i2cslave.c \
-	ports/stm32/qspi.c \
-	ports/stm32/flashbdev.c \
-	ports/stm32/spibdev.c \
-	ports/stm32/usbd_conf.c \
+	norflash.c \
+	ports/stm32f1/usbd_conf.c \
 	$(wildcard $(BOARD_DIR)/*.c)
 
 SRC_O = \
-	ports/stm32/boards/startup_stm32$(MCU_SERIES).o \
-	ports/stm32/resethandler.o \
+	ports/stm32f1/$(STARTUP_FILE) \
+	ports/stm32f1/resethandler.o \
 
-$(BUILD)/$(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_ll_usb.o: CFLAGS += -Wno-attributes
-SRC_HAL = $(addprefix $(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_,\
+$(BUILD)/$(HAL_DIR)/Src/stm32f1xx_ll_usb.o: CFLAGS += -Wno-attributes
+SRC_HAL = $(addprefix $(HAL_DIR)/Src/stm32f1xx_,\
 	hal_cortex.c \
 	hal_flash.c \
 	hal_flash_ex.c \
@@ -113,7 +101,7 @@ SRC_HAL = $(addprefix $(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_,\
 	ll_usb.c \
 	)
 
-SRC_USBDEV = $(addprefix ports/stm32/$(USBDEV_DIR)/,\
+SRC_USBDEV = $(addprefix ports/stm32f1/$(USBDEV_DIR)/,\
 	core/src/usbd_core.c \
 	core/src/usbd_ctlreq.c \
 	core/src/usbd_ioreq.c \
@@ -145,6 +133,10 @@ deploy-stlink: $(BUILD)/firmware.dfu
 	$(ECHO) "Writing $< to the board via ST-LINK"
 	$(Q)$(STFLASH) write $(BUILD)/firmware.bin $(FLASH_ADDR)
 
+deploy-openocd: $(BUILD)/firmware.dfu
+	$(ECHO) "Writing $(BUILD)/firmware.bin to the board via ST-LINK using OpenOCD"
+	$(Q)$(OPENOCD) -f $(OPENOCD_CONFIG) -c "stm_flash $(BUILD)/firmware.bin $(FLASH_ADDR)"
+
 $(BUILD)/firmware.dfu: $(BUILD)/firmware.elf
 	$(ECHO) "Create $@"
 	$(Q)$(OBJCOPY) -O binary -j .isr_vector -j .text -j .data $^ $(BUILD)/firmware.bin
@@ -163,7 +155,7 @@ $(BUILD)/firmware.elf: $(OBJ)
 # Rules to generate header files
 
 MAKE_PINS = ../boards/make-pins.py
-PREFIX_FILE = ../boards/stm32f4xx_prefix.c
+PREFIX_FILE = ../boards/stm32f1xx_prefix.c
 BOARD_PINS = $(BOARD_DIR)/pins.csv
 HEADER_BUILD = $(BUILD)/genhdr
 GEN_QSTRDEFS_GENERATED = $(HEADER_BUILD)/qstrdefs.generated.h

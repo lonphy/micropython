@@ -31,12 +31,12 @@
 #include "extmod/crypto-algorithms/sha256.c"
 #include "usbd_core.h"
 #include "storage.h"
-#include "i2cslave.h"
 #include "mboot.h"
+#include "norflash.h"
 
 // Using polling is about 10% faster than not using it (and using IRQ instead)
 // This DFU code with polling runs in about 70% of the time of the ST bootloader
-#define USE_USB_POLLING (1)
+#define USE_USB_POLLING (0)
 
 // Using cache probably won't make it faster because we run at a low frequency, and best
 // to keep the MCU config as minimal as possible.
@@ -44,27 +44,12 @@
 
 // IRQ priorities (encoded values suitable for NVIC_SetPriority)
 #define IRQ_PRI_SYSTICK (NVIC_EncodePriority(NVIC_PRIORITYGROUP_4, 0, 0))
-#define IRQ_PRI_I2C (NVIC_EncodePriority(NVIC_PRIORITYGROUP_4, 1, 0))
 
 // Configure PLL to give the desired CPU freq
-#undef MICROPY_HW_FLASH_LATENCY
-#if defined(STM32H7)
-#define CORE_PLL_FREQ (96000000)
-#define MICROPY_HW_FLASH_LATENCY FLASH_LATENCY_2
-#else
-#define CORE_PLL_FREQ (48000000)
+#undef  MICROPY_HW_FLASH_LATENCY
 #define MICROPY_HW_FLASH_LATENCY FLASH_LATENCY_1
-#endif
-#undef MICROPY_HW_CLK_PLLM
-#undef MICROPY_HW_CLK_PLLN
-#undef MICROPY_HW_CLK_PLLP
-#undef MICROPY_HW_CLK_PLLQ
-#undef MICROPY_HW_CLK_PLLR
-#define MICROPY_HW_CLK_PLLM (HSE_VALUE / 1000000)
-#define MICROPY_HW_CLK_PLLN (192)
-#define MICROPY_HW_CLK_PLLP (MICROPY_HW_CLK_PLLN / (CORE_PLL_FREQ / 1000000))
-#define MICROPY_HW_CLK_PLLQ (4)
-#define MICROPY_HW_CLK_PLLR (2)
+
+#define CORE_PLL_FREQ  (72000000)
 
 // These bits are used to detect valid application firmware at APPLICATION_ADDR
 #define APP_VALIDITY_BITS (0x00000003)
@@ -81,8 +66,7 @@ void mp_hal_delay_us(mp_uint_t usec) {
     // use a busy loop for the delay
     // sys freq is always a multiple of 2MHz, so division here won't lose precision
     const uint32_t ucount = CORE_PLL_FREQ / 2000000 * usec / 2;
-    for (uint32_t count = 0; ++count <= ucount;) {
-    }
+    for (uint32_t count = 0; ++count <= ucount;){}
 }
 
 static volatile uint32_t systick_ms;
@@ -126,65 +110,24 @@ static void __fatal_error(const char *msg) {
 
 /******************************************************************************/
 // CLOCK
-
-#if defined(STM32F4) || defined(STM32F7)
-
-#define CONFIG_RCC_CR_1ST (RCC_CR_HSION)
-#define CONFIG_RCC_CR_2ND (RCC_CR_HSEON || RCC_CR_CSSON || RCC_CR_PLLON)
-#define CONFIG_RCC_PLLCFGR (0x24003010)
-
-#elif defined(STM32H7)
-
-#define CONFIG_RCC_CR_1ST (RCC_CR_HSION)
-#define CONFIG_RCC_CR_2ND (RCC_CR_PLL3ON | RCC_CR_PLL2ON | RCC_CR_PLL1ON | RCC_CR_CSSHSEON \
-    | RCC_CR_HSEON | RCC_CR_HSI48ON | RCC_CR_CSIKERON | RCC_CR_CSION)
-#define CONFIG_RCC_PLLCFGR (0x00000000)
-
-#else
-#error Unknown processor
-#endif
-
 void SystemInit(void) {
-    #if defined(STM32H7)
-    // Configure write-once power options, and wait for voltage levels to be ready
-    PWR->CR3 = PWR_CR3_LDOEN;
-    while (!(PWR->CSR1 & PWR_CSR1_ACTVOSRDY)) {
-    }
-    #endif
-
     // Set HSION bit
-    RCC->CR |= CONFIG_RCC_CR_1ST;
+    RCC->CR |= RCC_CR_HSION;
 
     // Reset CFGR register
     RCC->CFGR = 0x00000000;
 
     // Reset HSEON, CSSON and PLLON bits
-    RCC->CR &= ~CONFIG_RCC_CR_2ND;
+    RCC->CR &= ~(RCC_CR_HSEON || RCC_CR_CSSON || RCC_CR_PLLON);
 
-    // Reset PLLCFGR register
-    RCC->PLLCFGR = CONFIG_RCC_PLLCFGR;
-
-    #if defined(STM32H7)
-    // Reset PLL and clock configuration registers
-    RCC->D1CFGR = 0x00000000;
-    RCC->D2CFGR = 0x00000000;
-    RCC->D3CFGR = 0x00000000;
-    RCC->PLLCKSELR = 0x00000000;
-    RCC->D1CCIPR = 0x00000000;
-    RCC->D2CCIP1R = 0x00000000;
-    RCC->D2CCIP2R = 0x00000000;
-    RCC->D3CCIPR = 0x00000000;
-    #endif
+    // Reset CFGR register
+    RCC->CFGR &= 0xFF80FFFFU;
 
     // Reset HSEBYP bit
-    RCC->CR &= (uint32_t)0xFFFBFFFF;
+    RCC->CR &= 0xFFFBFFFFU;
 
     // Disable all interrupts
-    #if defined(STM32F4) || defined(STM32F7)
     RCC->CIR = 0x00000000;
-    #elif defined(STM32H7)
-    RCC->CIER = 0x00000000;
-    #endif
 
     // Set location of vector table
     SCB->VTOR = FLASH_BASE;
@@ -199,7 +142,6 @@ void systick_init(void) {
     NVIC_SetPriority(SysTick_IRQn, IRQ_PRI_SYSTICK);
 }
 
-#if defined(STM32F4) || defined(STM32F7)
 
 void SystemClock_Config(void) {
     // This function assumes that HSI is used as the system clock (see RCC->CFGR, SWS bits)
@@ -207,35 +149,25 @@ void SystemClock_Config(void) {
     // Enable Power Control clock
     __HAL_RCC_PWR_CLK_ENABLE();
 
-    // Reduce power consumption
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
     // Turn HSE on
     __HAL_RCC_HSE_CONFIG(RCC_HSE_ON);
-    while (__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) == RESET) {
-    }
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) == RESET);
 
     // Disable PLL
     __HAL_RCC_PLL_DISABLE();
-    while (__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) != RESET) {
-    }
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) != RESET);
 
     // Configure PLL factors and source
-    RCC->PLLCFGR =
-        1 << RCC_PLLCFGR_PLLSRC_Pos // HSE selected as PLL source
-        | MICROPY_HW_CLK_PLLM << RCC_PLLCFGR_PLLM_Pos
-        | MICROPY_HW_CLK_PLLN << RCC_PLLCFGR_PLLN_Pos
-        | ((MICROPY_HW_CLK_PLLP >> 1) - 1) << RCC_PLLCFGR_PLLP_Pos
-        | MICROPY_HW_CLK_PLLQ << RCC_PLLCFGR_PLLQ_Pos
-        #ifdef RCC_PLLCFGR_PLLR
-        | 2 << RCC_PLLCFGR_PLLR_Pos // default PLLR value of 2
-        #endif
+    RCC->CFGR =
+        (1 << RCC_CFGR_PLLSRC_Pos) /* HSE selected as PLL source */
+        | (RCC_HSE_PREDIV_DIV1)    /* HSE clock not divided */ 
+        | (RCC_PLL_MUL9)           /* PLL input clock x 9 = 72MHz */
+        | (RCC_USBCLKSOURCE_PLL_DIV1_5)   /* USB prescaler is divided by 1.5 = 48MHz */
         ;
 
     // Enable PLL
     __HAL_RCC_PLL_ENABLE();
-    while(__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) == RESET) {
-    }
+    while(__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) == RESET);
 
     // Increase latency before changing clock
     if (MICROPY_HW_FLASH_LATENCY > (FLASH->ACR & FLASH_ACR_LATENCY)) {
@@ -247,8 +179,7 @@ void SystemClock_Config(void) {
 
     // Configure SYSCLK source from PLL
     __HAL_RCC_SYSCLK_CONFIG(RCC_SYSCLKSOURCE_PLLCLK);
-    while (__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
-    }
+    while (__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_SYSCLKSOURCE_STATUS_PLLCLK);
 
     // Decrease latency after changing clock
     if (MICROPY_HW_FLASH_LATENCY < (FLASH->ACR & FLASH_ACR_LATENCY)) {
@@ -256,101 +187,13 @@ void SystemClock_Config(void) {
     }
 
     // Set APB clock dividers
-    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE1, RCC_HCLK_DIV4);
-    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE2, RCC_HCLK_DIV2 << 3);
-
-    // Update clock value and reconfigure systick now that the frequency changed
-    SystemCoreClock = CORE_PLL_FREQ;
-    systick_init();
-
-    #if defined(STM32F7)
-    // The DFU bootloader changes the clocksource register from its default power
-    // on reset value, so we set it back here, so the clocksources are the same
-    // whether we were started from DFU or from a power on reset.
-    RCC->DCKCFGR2 = 0;
-    #endif
-}
-
-#elif defined(STM32H7)
-
-void SystemClock_Config(void) {
-    // This function assumes that HSI is used as the system clock (see RCC->CFGR, SWS bits)
-
-    // Select VOS level as high voltage to give reliable operation
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-    while (__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY) == RESET) {
-    }
-
-    // Turn HSE on
-    __HAL_RCC_HSE_CONFIG(RCC_HSE_ON);
-    while (__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY) == RESET) {
-    }
-
-    // Disable PLL1
-    __HAL_RCC_PLL_DISABLE();
-    while (__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) != RESET) {
-    }
-
-    // Configure PLL1 factors and source
-    RCC->PLLCKSELR =
-        MICROPY_HW_CLK_PLLM << RCC_PLLCKSELR_DIVM1_Pos
-        | 2 << RCC_PLLCKSELR_PLLSRC_Pos; // HSE selected as PLL source
-    RCC->PLL1DIVR =
-        (MICROPY_HW_CLK_PLLN - 1) << RCC_PLL1DIVR_N1_Pos
-        | (MICROPY_HW_CLK_PLLP - 1) << RCC_PLL1DIVR_P1_Pos // only even P allowed
-        | (MICROPY_HW_CLK_PLLQ - 1) << RCC_PLL1DIVR_Q1_Pos
-        | (MICROPY_HW_CLK_PLLR - 1) << RCC_PLL1DIVR_R1_Pos;
-
-    // Enable PLL1 outputs for SYSCLK and USB
-    RCC->PLLCFGR = RCC_PLLCFGR_DIVP1EN | RCC_PLLCFGR_DIVQ1EN;
-
-    // Select PLL1-Q for USB clock source
-    RCC->D2CCIP2R |= 1 << RCC_D2CCIP2R_USBSEL_Pos;
-
-    // Enable PLL1
-    __HAL_RCC_PLL_ENABLE();
-    while(__HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY) == RESET) {
-    }
-
-    // Increase latency before changing SYSCLK
-    if (MICROPY_HW_FLASH_LATENCY > (FLASH->ACR & FLASH_ACR_LATENCY)) {
-        __HAL_FLASH_SET_LATENCY(MICROPY_HW_FLASH_LATENCY);
-    }
-
-    // Configure AHB divider
-    RCC->D1CFGR =
-        0 << RCC_D1CFGR_D1CPRE_Pos // SYSCLK prescaler of 1
-        | 8 << RCC_D1CFGR_HPRE_Pos // AHB prescaler of 2
-        ;
-
-    // Configure SYSCLK source from PLL
-    __HAL_RCC_SYSCLK_CONFIG(RCC_SYSCLKSOURCE_PLLCLK);
-    while (__HAL_RCC_GET_SYSCLK_SOURCE() != RCC_CFGR_SWS_PLL1) {
-    }
-
-    // Decrease latency after changing clock
-    if (MICROPY_HW_FLASH_LATENCY < (FLASH->ACR & FLASH_ACR_LATENCY)) {
-        __HAL_FLASH_SET_LATENCY(MICROPY_HW_FLASH_LATENCY);
-    }
-
-    // Set APB clock dividers
-    RCC->D1CFGR |=
-        4 << RCC_D1CFGR_D1PPRE_Pos // APB3 prescaler of 2
-        ;
-    RCC->D2CFGR =
-        4 << RCC_D2CFGR_D2PPRE2_Pos // APB2 prescaler of 2
-        | 4 << RCC_D2CFGR_D2PPRE1_Pos // APB1 prescaler of 2
-        ;
-    RCC->D3CFGR =
-        4 << RCC_D3CFGR_D3PPRE_Pos // APB4 prescaler of 2
-        ;
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE1, RCC_HCLK_DIV2);
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_PPRE2, RCC_HCLK_DIV1);
 
     // Update clock value and reconfigure systick now that the frequency changed
     SystemCoreClock = CORE_PLL_FREQ;
     systick_init();
 }
-
-#endif
 
 // Needed by HAL_PCD_IRQHandler
 uint32_t HAL_RCC_GetHCLKFreq(void) {
@@ -358,38 +201,55 @@ uint32_t HAL_RCC_GetHCLKFreq(void) {
 }
 
 /******************************************************************************/
+#define MP_HAL_PIN_MODE_INVALID    (4)
+// this table converts from MP_HAL_PIN_MODE_xxx to STM32F1 CRL/CRH value, output use highest speed
+const unsigned char mp_hal_pin_mod_cfg[7] = {
+    [MP_HAL_PIN_MODE_IN]      = 0x04, // floating input
+    [MP_HAL_PIN_MODE_OUT]     = 0x03, // output PP, 50MHz
+    [MP_HAL_PIN_MODE_ALT]     = 0x0b, // alternat PP, 50MHz
+    [MP_HAL_PIN_MODE_ANALOG]  = 0x00, // analog input
+    [MP_HAL_PIN_MODE_INVALID] = 0x00, // not used
+    [MP_HAL_PIN_MODE_OUT_OD]  = 0x07, // output OD, 50MHz
+    [MP_HAL_PIN_MODE_ALT_OD]  = 0x0f, // alternat OD, 50MHz
+};
+
 // GPIO
-
-#if defined(STM32F4) || defined(STM32F7)
-#define AHBxENR AHB1ENR
-#define AHBxENR_GPIOAEN_Pos RCC_AHB1ENR_GPIOAEN_Pos
-#elif defined(STM32H7)
-#define AHBxENR AHB4ENR
-#define AHBxENR_GPIOAEN_Pos RCC_AHB4ENR_GPIOAEN_Pos
-#endif
-
 void mp_hal_pin_config(mp_hal_pin_obj_t port_pin, uint32_t mode, uint32_t pull, uint32_t alt) {
     GPIO_TypeDef *gpio = (GPIO_TypeDef*)(port_pin & ~0xf);
-
-    // Enable the GPIO peripheral clock
+    
     uint32_t gpio_idx = ((uintptr_t)gpio - GPIOA_BASE) / (GPIOB_BASE - GPIOA_BASE);
-    RCC->AHBxENR |= 1 << (AHBxENR_GPIOAEN_Pos + gpio_idx);
-    volatile uint32_t tmp = RCC->AHBxENR; // Delay after enabling clock
+    RCC->APB2ENR |= 1 << (RCC_APB2ENR_IOPAEN_Pos + gpio_idx);
+    volatile uint32_t tmp = RCC->APB2ENR; // Delay after enabling clock
     (void)tmp;
 
-    // Configure the pin
     uint32_t pin = port_pin & 0xf;
-    gpio->MODER = (gpio->MODER & ~(3 << (2 * pin))) | ((mode & 3) << (2 * pin));
-    gpio->OTYPER = (gpio->OTYPER & ~(1 << pin)) | ((mode >> 2) << pin);
-    gpio->OSPEEDR = (gpio->OSPEEDR & ~(3 << (2 * pin))) | (2 << (2 * pin)); // full speed
-    gpio->PUPDR = (gpio->PUPDR & ~(3 << (2 * pin))) | (pull << (2 * pin));
-    gpio->AFR[pin >> 3] = (gpio->AFR[pin >> 3] & ~(15 << (4 * (pin & 7)))) | (alt << (4 * (pin & 7)));
+    uint32_t moder = mp_hal_pin_mod_cfg[mode];
+    uint32_t pos = (pin % 8) * 4;
+    
+    // input with pull up/down
+    if ( moder == 0x04  && pull ) {
+        moder = 0x08;
+    }
+
+    // get register CRL/CRH (pin0~pin7 use CRL, pin8~pin15 use CRH)
+    register uint32_t *pReg = (uint32_t *)((uint32_t)(&gpio->CRL) + (pin / 8 * 4));
+    *pReg = (*pReg & ~(0x0f << pos) ) | ( (moder & 0x0f) << pos );
+
+    // set pull
+    if (moder == 0x08) {
+        gpio->BSRR= 1 << (pin + (1-pull%2) * 16);
+    }
 }
 
 void mp_hal_pin_config_speed(uint32_t port_pin, uint32_t speed) {
     GPIO_TypeDef *gpio = (GPIO_TypeDef*)(port_pin & ~0xf);
     uint32_t pin = port_pin & 0xf;
-    gpio->OSPEEDR = (gpio->OSPEEDR & ~(3 << (2 * pin))) | (speed << (2 * pin));
+    uint32_t pos = (pin % 8) * 4;
+
+    register uint32_t *pReg = (uint32_t *)((uint32_t)(&gpio->CRL) + (pin / 8 * 4));
+    if ( (*pReg >> pos) & 3 ) {
+        *pReg = (*pReg & ~(3 << pos)) | (((speed + 1) & 3) << pos);
+    }
 }
 
 /******************************************************************************/
@@ -397,7 +257,9 @@ void mp_hal_pin_config_speed(uint32_t port_pin, uint32_t speed) {
 
 #define LED0 MICROPY_HW_LED1
 #define LED1 MICROPY_HW_LED2
+#ifdef MICROPY_HW_LED3
 #define LED2 MICROPY_HW_LED3
+#endif
 #ifdef MICROPY_HW_LED4
 #define LED3 MICROPY_HW_LED4
 #endif
@@ -405,7 +267,9 @@ void mp_hal_pin_config_speed(uint32_t port_pin, uint32_t speed) {
 void led_init(void) {
     mp_hal_pin_output(LED0);
     mp_hal_pin_output(LED1);
+    #ifdef LED2
     mp_hal_pin_output(LED2);
+    #endif
     #ifdef LED3
     mp_hal_pin_output(LED3);
     #endif
@@ -425,7 +289,9 @@ void led_state(int led, int val) {
 void led_state_all(unsigned int mask) {
     led_state(LED0, mask & 1);
     led_state(LED1, mask & 2);
+    #ifdef LED2
     led_state(LED2, mask & 4);
+    #endif
     #ifdef LED3
     led_state(LED3, mask & 8);
     #endif
@@ -445,107 +311,49 @@ static int usrbtn_state(void) {
 /******************************************************************************/
 // FLASH
 
-#ifndef MBOOT_SPIFLASH_LAYOUT
-#define MBOOT_SPIFLASH_LAYOUT ""
+#ifndef MBOOT_NORFLASH_LAYOUT
+#define MBOOT_NORFLASH_LAYOUT ""
 #endif
 
-#ifndef MBOOT_SPIFLASH2_LAYOUT
-#define MBOOT_SPIFLASH2_LAYOUT ""
-#endif
 
 typedef struct {
     uint32_t base_address;
-    uint32_t sector_size;
-    uint32_t sector_count;
+    uint32_t page_size;
+    uint32_t page_count;
 } flash_layout_t;
 
-#if defined(STM32F7)
-// FLASH_FLAG_PGSERR (Programming Sequence Error) was renamed to
-// FLASH_FLAG_ERSERR (Erasing Sequence Error) in STM32F7
-#define FLASH_FLAG_PGSERR FLASH_FLAG_ERSERR
+#if defined(STM32F103xG)
+#define FLASH_LAYOUT_STR "@Internal Flash  /0x08000000/128*002Kg,128*002Kg,256*002Kg" MBOOT_NORFLASH_LAYOUT
 #endif
 
-#if defined(STM32F4) \
-    || defined(STM32F722xx) \
-    || defined(STM32F723xx) \
-    || defined(STM32F732xx) \
-    || defined(STM32F733xx)
-
-#define FLASH_LAYOUT_STR "@Internal Flash  /0x08000000/04*016Kg,01*064Kg,07*128Kg" MBOOT_SPIFLASH_LAYOUT MBOOT_SPIFLASH2_LAYOUT
-
 static const flash_layout_t flash_layout[] = {
-    { 0x08000000, 0x04000, 4 },
-    { 0x08010000, 0x10000, 1 },
-    { 0x08020000, 0x20000, 3 },
-    #if defined(FLASH_SECTOR_8)
-    { 0x08080000, 0x20000, 4 },
-    #endif
-    #if defined(FLASH_SECTOR_12)
-    { 0x08100000, 0x04000, 4 },
-    { 0x08110000, 0x10000, 1 },
-    { 0x08120000, 0x20000, 7 },
+    { 0x08000000U, FLASH_PAGE_SIZE, 128 }, /* 103xC total 128 pages = 256K */
+    #if defined(STM32F103xE)
+    { 0x08040000U, FLASH_PAGE_SIZE, 128 }, /* 103xE has 512K = 2k * 256 */
+    #elif defined(STM32F103xG)
+    { 0x08040000U, FLASH_PAGE_SIZE, 128 }, /* 103xF has 768K  = 2k * 384 */
+    { 0x08080000U, FLASH_PAGE_SIZE, 256 }, /* 103xG has 1024K = 2k * 512 */
     #endif
 };
 
-#elif defined(STM32F765xx) || defined(STM32F767xx) || defined(STM32F769xx)
-
-#define FLASH_LAYOUT_STR "@Internal Flash  /0x08000000/04*032Kg,01*128Kg,07*256Kg" MBOOT_SPIFLASH_LAYOUT MBOOT_SPIFLASH2_LAYOUT
-
-// This is for dual-bank mode disabled
-static const flash_layout_t flash_layout[] = {
-    { 0x08000000, 0x08000, 4 },
-    { 0x08020000, 0x20000, 1 },
-    { 0x08040000, 0x40000, 7 },
-};
-
-#elif defined(STM32H743xx)
-
-#define FLASH_LAYOUT_STR "@Internal Flash  /0x08000000/16*128Kg" MBOOT_SPIFLASH_LAYOUT MBOOT_SPIFLASH2_LAYOUT
-
-static const flash_layout_t flash_layout[] = {
-    { 0x08000000, 0x20000, 16 },
-};
-
-#endif
-
-static uint32_t flash_get_sector_index(uint32_t addr, uint32_t *sector_size) {
+// 通过布局数组找到内部Flash所在页索引
+static uint32_t flash_get_page_index(uint32_t addr, uint32_t *page_size) {
     if (addr >= flash_layout[0].base_address) {
-        uint32_t sector_index = 0;
+        uint32_t page_index = 0;
         for (int i = 0; i < MP_ARRAY_SIZE(flash_layout); ++i) {
-            for (int j = 0; j < flash_layout[i].sector_count; ++j) {
-                uint32_t sector_start_next = flash_layout[i].base_address
-                    + (j + 1) * flash_layout[i].sector_size;
-                if (addr < sector_start_next) {
-                    *sector_size = flash_layout[i].sector_size;
-                    return sector_index;
+            for (int j = 0; j < flash_layout[i].page_count; ++j) {
+                uint32_t page_start_next = flash_layout[i].base_address
+                    + (j + 1) * flash_layout[i].page_size;
+                if (addr < page_start_next) {
+                    *page_size = flash_layout[i].page_size;
+                    return page_index;
                 }
-                ++sector_index;
+                ++page_index;
             }
         }
     }
     return 0;
 }
-
-#if defined(STM32H7)
-// get the bank of a given flash address
-static uint32_t get_bank(uint32_t addr) {
-    if (READ_BIT(FLASH->OPTCR, FLASH_OPTCR_SWAP_BANK) == 0) {
-        // no bank swap
-        if (addr < (FLASH_BASE + FLASH_BANK_SIZE)) {
-            return FLASH_BANK_1;
-        } else {
-            return FLASH_BANK_2;
-        }
-    } else {
-        // bank swap
-        if (addr < (FLASH_BASE + FLASH_BANK_SIZE)) {
-            return FLASH_BANK_2;
-        } else {
-            return FLASH_BANK_1;
-        }
-    }
-}
-#endif
 
 static int flash_mass_erase(void) {
     // TODO
@@ -553,38 +361,29 @@ static int flash_mass_erase(void) {
 }
 
 static int flash_page_erase(uint32_t addr, uint32_t *next_addr) {
-    uint32_t sector_size = 0;
-    uint32_t sector = flash_get_sector_index(addr, &sector_size);
-    if (sector == 0) {
-        // Don't allow to erase the sector with this bootloader in it
+    uint32_t page_size = 0;
+    uint32_t page = flash_get_page_index(addr, &page_size);
+    if (page < 64) {
+        // 0x08020000 之前的是bootloader区域, 不允许擦除
         return -1;
     }
 
-    *next_addr = addr + sector_size;
+    *next_addr = addr + page_size;
+
+    // erase the page(s)
+    FLASH_EraseInitTypeDef EraseInitStruct;
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES; /* 按页擦除 */
+    EraseInitStruct.Banks = FLASH_BANK_BOTH;
+    EraseInitStruct.PageAddress = addr; /* 这里需要填写实际要擦除的地址 */
+    EraseInitStruct.NbPages = 1;        /* 这里指定要擦除的总页数 */
+    uint32_t PageError = 0;
 
     HAL_FLASH_Unlock();
-
     // Clear pending flags (if any)
-    #if defined(STM32H7)
-    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS_BANK1 | FLASH_FLAG_ALL_ERRORS_BANK2);
-    #else
-    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR |
-                           FLASH_FLAG_PGAERR | FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR);
-    #endif
+    __HAL_FLASH_CLEAR_FLAG(SR_FLAG_MASK);
 
-    // erase the sector(s)
-    FLASH_EraseInitTypeDef EraseInitStruct;
-    EraseInitStruct.TypeErase = TYPEERASE_SECTORS;
-    EraseInitStruct.VoltageRange = VOLTAGE_RANGE_3; // voltage range needs to be 2.7V to 3.6V
-    #if defined(STM32H7)
-    EraseInitStruct.Banks = get_bank(addr);
-    #endif
-    EraseInitStruct.Sector = sector;
-    EraseInitStruct.NbSectors = 1;
-
-    uint32_t SectorError = 0;
-    if (HAL_FLASHEx_Erase(&EraseInitStruct, &SectorError) != HAL_OK) {
-        // error occurred during sector erase
+    if (HAL_FLASHEx_Erase(&EraseInitStruct, &PageError) != HAL_OK) {
+        // error occurred during page erase
         return -1;
     }
 
@@ -599,7 +398,7 @@ static int flash_page_erase(uint32_t addr, uint32_t *next_addr) {
 }
 
 static int flash_write(uint32_t addr, const uint8_t *src8, size_t len) {
-    if (addr >= flash_layout[0].base_address && addr < flash_layout[0].base_address + flash_layout[0].sector_size) {
+    if (addr >= flash_layout[0].base_address && addr < flash_layout[0].base_address + flash_layout[0].page_size) {
         // Don't allow to write the sector with this bootloader in it
         return -1;
     }
@@ -608,29 +407,14 @@ static int flash_write(uint32_t addr, const uint8_t *src8, size_t len) {
     size_t num_word32 = (len + 3) / 4;
     HAL_FLASH_Unlock();
 
-    #if defined(STM32H7)
-
-    // program the flash 256 bits at a time
-    for (int i = 0; i < num_word32 / 8; ++i) {
-        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, addr, (uint64_t)(uint32_t)src) != HAL_OK) {
-            return - 1;
-        }
-        addr += 32;
-        src += 8;
-    }
-
-    #else
-
     // program the flash word by word
     for (size_t i = 0; i < num_word32; i++) {
-        if (HAL_FLASH_Program(TYPEPROGRAM_WORD, addr, *src) != HAL_OK) {
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr, *src) != HAL_OK) {
             return -1;
         }
         addr += 4;
         src += 1;
     }
-
-    #endif
 
     // TODO verify data
 
@@ -645,14 +429,14 @@ static int do_mass_erase(void) {
     return flash_mass_erase();
 }
 
-#if defined(MBOOT_SPIFLASH_ADDR) || defined(MBOOT_SPIFLASH2_ADDR)
-static int spiflash_page_erase(mp_spiflash_t *spif, uint32_t addr, uint32_t n_blocks) {
+#if defined(MBOOT_NORFLASH_ADDR)
+static int norflash_page_erase(uint32_t addr, uint32_t n_blocks) {
     for (int i = 0; i < n_blocks; ++i) {
-        int ret = mp_spiflash_erase_block(spif, addr);
+        int ret = mp_norflash_erase_block(addr);
         if (ret != 0) {
             return ret;
         }
-        addr += MP_SPIFLASH_ERASE_BLOCK_SIZE;
+        addr += MBOOT_NORFLASH_BLOCK_SIZE;
     }
     return 0;
 }
@@ -661,19 +445,10 @@ static int spiflash_page_erase(mp_spiflash_t *spif, uint32_t addr, uint32_t n_bl
 int do_page_erase(uint32_t addr, uint32_t *next_addr) {
     led_state(LED0, 1);
 
-    #if defined(MBOOT_SPIFLASH_ADDR)
-    if (MBOOT_SPIFLASH_ADDR <= addr && addr < MBOOT_SPIFLASH_ADDR + MBOOT_SPIFLASH_BYTE_SIZE) {
-        *next_addr = addr + MBOOT_SPIFLASH_ERASE_BLOCKS_PER_PAGE * MP_SPIFLASH_ERASE_BLOCK_SIZE;
-        return spiflash_page_erase(MBOOT_SPIFLASH_SPIFLASH,
-            addr - MBOOT_SPIFLASH_ADDR, MBOOT_SPIFLASH_ERASE_BLOCKS_PER_PAGE);
-    }
-    #endif
-
-    #if defined(MBOOT_SPIFLASH2_ADDR)
-    if (MBOOT_SPIFLASH2_ADDR <= addr && addr < MBOOT_SPIFLASH2_ADDR + MBOOT_SPIFLASH2_BYTE_SIZE) {
-        *next_addr = addr + MBOOT_SPIFLASH2_ERASE_BLOCKS_PER_PAGE * MP_SPIFLASH_ERASE_BLOCK_SIZE;
-        return spiflash_page_erase(MBOOT_SPIFLASH2_SPIFLASH,
-            addr - MBOOT_SPIFLASH2_ADDR, MBOOT_SPIFLASH2_ERASE_BLOCKS_PER_PAGE);
+    #if defined(MBOOT_NORFLASH_ADDR)
+    if (MBOOT_NORFLASH_ADDR <= addr && addr < MBOOT_NORFLASH_ADDR + MBOOT_NORFLASH_BYTE_SIZE) {
+        *next_addr = addr + MBOOT_NORFLASH_BLOCK_SIZE;
+        return norflash_page_erase(addr, 1);
     }
     #endif
 
@@ -681,15 +456,10 @@ int do_page_erase(uint32_t addr, uint32_t *next_addr) {
 }
 
 void do_read(uint32_t addr, int len, uint8_t *buf) {
-    #if defined(MBOOT_SPIFLASH_ADDR)
-    if (MBOOT_SPIFLASH_ADDR <= addr && addr < MBOOT_SPIFLASH_ADDR + MBOOT_SPIFLASH_BYTE_SIZE) {
-        mp_spiflash_read(MBOOT_SPIFLASH_SPIFLASH, addr - MBOOT_SPIFLASH_ADDR, len, buf);
-        return;
-    }
-    #endif
-    #if defined(MBOOT_SPIFLASH2_ADDR)
-    if (MBOOT_SPIFLASH2_ADDR <= addr && addr < MBOOT_SPIFLASH2_ADDR + MBOOT_SPIFLASH2_BYTE_SIZE) {
-        mp_spiflash_read(MBOOT_SPIFLASH2_SPIFLASH, addr - MBOOT_SPIFLASH2_ADDR, len, buf);
+    #if defined(MBOOT_NORFLASH_ADDR)
+    if (MBOOT_NORFLASH_ADDR <= addr && addr < MBOOT_NORFLASH_ADDR + MBOOT_NORFLASH_BYTE_SIZE) {
+        // TODO: Just need Read directly from memory
+        mp_norflash_read(addr, len, buf);
         return;
     }
     #endif
@@ -702,188 +472,14 @@ int do_write(uint32_t addr, const uint8_t *src8, size_t len) {
     static uint32_t led_tog = 0;
     led_state(LED0, (led_tog++) & 4);
 
-    #if defined(MBOOT_SPIFLASH_ADDR)
-    if (MBOOT_SPIFLASH_ADDR <= addr && addr < MBOOT_SPIFLASH_ADDR + MBOOT_SPIFLASH_BYTE_SIZE) {
-        return mp_spiflash_write(MBOOT_SPIFLASH_SPIFLASH, addr - MBOOT_SPIFLASH_ADDR, len, src8);
-    }
-    #endif
-
-    #if defined(MBOOT_SPIFLASH2_ADDR)
-    if (MBOOT_SPIFLASH2_ADDR <= addr && addr < MBOOT_SPIFLASH2_ADDR + MBOOT_SPIFLASH2_BYTE_SIZE) {
-        return mp_spiflash_write(MBOOT_SPIFLASH2_SPIFLASH, addr - MBOOT_SPIFLASH2_ADDR, len, src8);
+    #if defined(MBOOT_NORFLASH_ADDR)
+    if (MBOOT_NORFLASH_ADDR <= addr && addr < MBOOT_NORFLASH_ADDR + MBOOT_NORFLASH_BYTE_SIZE) {
+        return mp_norflash_write(addr, len, src8);
     }
     #endif
 
     return flash_write(addr, src8, len);
 }
-
-/******************************************************************************/
-// I2C slave interface
-
-#if defined(MBOOT_I2C_SCL)
-
-#define PASTE2(a, b) a ## b
-#define PASTE3(a, b, c) a ## b ## c
-#define EVAL_PASTE2(a, b) PASTE2(a, b)
-#define EVAL_PASTE3(a, b, c) PASTE3(a, b, c)
-
-#define MBOOT_I2Cx EVAL_PASTE2(I2C, MBOOT_I2C_PERIPH_ID)
-#define I2Cx_EV_IRQn EVAL_PASTE3(I2C, MBOOT_I2C_PERIPH_ID, _EV_IRQn)
-#define I2Cx_EV_IRQHandler EVAL_PASTE3(I2C, MBOOT_I2C_PERIPH_ID, _EV_IRQHandler)
-
-#define I2C_CMD_BUF_LEN (129)
-
-enum {
-    I2C_CMD_ECHO = 1,
-    I2C_CMD_GETID,      // () -> u8*12 unique id, ASCIIZ mcu name, ASCIIZ board name
-    I2C_CMD_GETCAPS,    // not implemented
-    I2C_CMD_RESET,      // () -> ()
-    I2C_CMD_CONFIG,     // not implemented
-    I2C_CMD_GETLAYOUT,  // () -> ASCII string
-    I2C_CMD_MASSERASE,  // () -> ()
-    I2C_CMD_PAGEERASE,  // le32 -> ()
-    I2C_CMD_SETRDADDR,  // le32 -> ()
-    I2C_CMD_SETWRADDR,  // le32 -> ()
-    I2C_CMD_READ,       // u8 -> bytes
-    I2C_CMD_WRITE,      // bytes -> ()
-    I2C_CMD_COPY,       // not implemented
-    I2C_CMD_CALCHASH,   // le32 -> u8*32
-    I2C_CMD_MARKVALID,  // () -> ()
-};
-
-typedef struct _i2c_obj_t {
-    volatile bool cmd_send_arg;
-    volatile bool cmd_arg_sent;
-    volatile int cmd_arg;
-    volatile uint32_t cmd_rdaddr;
-    volatile uint32_t cmd_wraddr;
-    volatile uint16_t cmd_buf_pos;
-    uint8_t cmd_buf[I2C_CMD_BUF_LEN];
-} i2c_obj_t;
-
-static i2c_obj_t i2c_obj;
-
-void i2c_init(int addr) {
-    i2c_obj.cmd_send_arg = false;
-
-    mp_hal_pin_config(MBOOT_I2C_SCL, MP_HAL_PIN_MODE_ALT_OD, MP_HAL_PIN_PULL_NONE, MBOOT_I2C_ALTFUNC);
-    mp_hal_pin_config(MBOOT_I2C_SDA, MP_HAL_PIN_MODE_ALT_OD, MP_HAL_PIN_PULL_NONE, MBOOT_I2C_ALTFUNC);
-
-    i2c_slave_init(MBOOT_I2Cx, I2Cx_EV_IRQn, IRQ_PRI_I2C, addr);
-}
-
-int i2c_slave_process_addr_match(int rw) {
-    if (i2c_obj.cmd_arg_sent) {
-        i2c_obj.cmd_send_arg = false;
-    }
-    i2c_obj.cmd_buf_pos = 0;
-    return 0; // ACK
-}
-
-int i2c_slave_process_rx_byte(uint8_t val) {
-    if (i2c_obj.cmd_buf_pos < sizeof(i2c_obj.cmd_buf)) {
-        i2c_obj.cmd_buf[i2c_obj.cmd_buf_pos++] = val;
-    }
-    return 0; // ACK
-}
-
-void i2c_slave_process_rx_end(void) {
-    if (i2c_obj.cmd_buf_pos == 0) {
-        return;
-    }
-
-    int len = i2c_obj.cmd_buf_pos - 1;
-    uint8_t *buf = i2c_obj.cmd_buf;
-
-    if (buf[0] == I2C_CMD_ECHO) {
-        ++len;
-    } else if (buf[0] == I2C_CMD_GETID && len == 0) {
-        memcpy(buf, (uint8_t*)MP_HAL_UNIQUE_ID_ADDRESS, 12);
-        memcpy(buf + 12, MICROPY_HW_MCU_NAME, sizeof(MICROPY_HW_MCU_NAME));
-        memcpy(buf + 12 + sizeof(MICROPY_HW_MCU_NAME), MICROPY_HW_BOARD_NAME, sizeof(MICROPY_HW_BOARD_NAME) - 1);
-        len = 12 + sizeof(MICROPY_HW_MCU_NAME) + sizeof(MICROPY_HW_BOARD_NAME) - 1;
-    } else if (buf[0] == I2C_CMD_RESET && len == 0) {
-        do_reset();
-    } else if (buf[0] == I2C_CMD_GETLAYOUT && len == 0) {
-        len = strlen(FLASH_LAYOUT_STR);
-        memcpy(buf, FLASH_LAYOUT_STR, len);
-    } else if (buf[0] == I2C_CMD_MASSERASE && len == 0) {
-        len = do_mass_erase();
-    } else if (buf[0] == I2C_CMD_PAGEERASE && len == 4) {
-        uint32_t next_addr;
-        len = do_page_erase(get_le32(buf + 1), &next_addr);
-    } else if (buf[0] == I2C_CMD_SETRDADDR && len == 4) {
-        i2c_obj.cmd_rdaddr = get_le32(buf + 1);
-        len = 0;
-    } else if (buf[0] == I2C_CMD_SETWRADDR && len == 4) {
-        i2c_obj.cmd_wraddr = get_le32(buf + 1);
-        len = 0;
-    } else if (buf[0] == I2C_CMD_READ && len == 1) {
-        len = buf[1];
-        if (len > I2C_CMD_BUF_LEN) {
-            len = I2C_CMD_BUF_LEN;
-        }
-        do_read(i2c_obj.cmd_rdaddr, len, buf);
-        i2c_obj.cmd_rdaddr += len;
-    } else if (buf[0] == I2C_CMD_WRITE) {
-        if (i2c_obj.cmd_wraddr == APPLICATION_ADDR) {
-            // Mark the 2 lower bits to indicate invalid app firmware
-            buf[1] |= APP_VALIDITY_BITS;
-        }
-        int ret = do_write(i2c_obj.cmd_wraddr, buf + 1, len);
-        if (ret < 0) {
-            len = ret;
-        } else {
-            i2c_obj.cmd_wraddr += len;
-            len = 0;
-        }
-    } else if (buf[0] == I2C_CMD_CALCHASH && len == 4) {
-        uint32_t hashlen = get_le32(buf + 1);
-        static CRYAL_SHA256_CTX ctx;
-        sha256_init(&ctx);
-        sha256_update(&ctx, (const void*)i2c_obj.cmd_rdaddr, hashlen);
-        i2c_obj.cmd_rdaddr += hashlen;
-        sha256_final(&ctx, buf);
-        len = 32;
-    } else if (buf[0] == I2C_CMD_MARKVALID && len == 0) {
-        uint32_t buf;
-        buf = *(volatile uint32_t*)APPLICATION_ADDR;
-        if ((buf & APP_VALIDITY_BITS) != APP_VALIDITY_BITS) {
-            len = -1;
-        } else {
-            buf &= ~APP_VALIDITY_BITS;
-            int ret = do_write(APPLICATION_ADDR, (void*)&buf, 4);
-            if (ret < 0) {
-                len = ret;
-            } else {
-                buf = *(volatile uint32_t*)APPLICATION_ADDR;
-                if ((buf & APP_VALIDITY_BITS) != 0) {
-                    len = -2;
-                } else {
-                    len = 0;
-                }
-            }
-        }
-    } else {
-        len = -127;
-    }
-    i2c_obj.cmd_arg = len;
-    i2c_obj.cmd_send_arg = true;
-    i2c_obj.cmd_arg_sent = false;
-}
-
-uint8_t i2c_slave_process_tx_byte(void) {
-    if (i2c_obj.cmd_send_arg) {
-        i2c_obj.cmd_arg_sent = true;
-        return i2c_obj.cmd_arg;
-    } else if (i2c_obj.cmd_buf_pos < sizeof(i2c_obj.cmd_buf)) {
-        return i2c_obj.cmd_buf[i2c_obj.cmd_buf_pos++];
-    } else {
-        return 0;
-    }
-}
-
-#endif // defined(MBOOT_I2C_SCL)
 
 /******************************************************************************/
 // DFU
@@ -935,6 +531,7 @@ static int dfu_process_dnload(void) {
     int ret = -1;
     if (dfu_state.wBlockNum == 0) {
         // download control commands
+        // 0x41 - 擦除Flash, 可选4字节 擦除起始地址, 无则全盘擦除
         if (dfu_state.wLength >= 1 && dfu_state.buf[0] == 0x41) {
             if (dfu_state.wLength == 1) {
                 // mass erase
@@ -944,7 +541,10 @@ static int dfu_process_dnload(void) {
                 uint32_t next_addr;
                 ret = do_page_erase(get_le32(&dfu_state.buf[1]), &next_addr);
             }
-        } else if (dfu_state.wLength >= 1 && dfu_state.buf[0] == 0x21) {
+        }
+
+        // 0x21 - 设置地址 4字节(大端)
+        else if (dfu_state.wLength >= 1 && dfu_state.buf[0] == 0x21) {
             if (dfu_state.wLength == 5) {
                 // set address
                 dfu_state.addr = get_le32(&dfu_state.buf[1]);
@@ -1072,6 +672,10 @@ typedef struct _pyb_usbdd_obj_t {
 #ifndef MBOOT_USB_PID
 #define MBOOT_USB_PID 0xDF11
 #endif
+
+static const uint8_t usbd_fifo_size[] = {
+    32, 8, 16, 8, 16, 0, 0, // FS: RX, EP0(in), 5x IN endpoints
+};
 
 __ALIGN_BEGIN static const uint8_t USBD_LangIDDesc[USB_LEN_LANGID_STR_DESC] __ALIGN_END = {
     USB_LEN_LANGID_STR_DESC,
@@ -1248,21 +852,11 @@ static const USBD_ClassTypeDef pyb_usbdd_class = {
 
 static pyb_usbdd_obj_t pyb_usbdd SECTION_NOZERO_BSS;
 
-static int pyb_usbdd_detect_port(void) {
-    #if MBOOT_USB_AUTODETECT_PORT
-    mp_hal_pin_config(pin_A11, MP_HAL_PIN_MODE_IN, MP_HAL_PIN_PULL_UP, 0);
-    mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_IN, MP_HAL_PIN_PULL_UP, 0);
-    int state = mp_hal_pin_read(pin_A11) == 0 && mp_hal_pin_read(pin_A12) == 0;
-    mp_hal_pin_config(pin_A11, MP_HAL_PIN_MODE_IN, MP_HAL_PIN_PULL_NONE, 0);
-    mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_IN, MP_HAL_PIN_PULL_NONE, 0);
-    return 0;
-}
-
-static void pyb_usbdd_init(pyb_usbdd_obj_t *self, int phy_id) {
+static void pyb_usbdd_init(pyb_usbdd_obj_t *self) {
     self->started = false;
     self->tx_pending = false;
     USBD_HandleTypeDef *usbd = &self->hUSBDDevice;
-    usbd->id = phy_id;
+    usbd->id = 0;
     usbd->dev_state = USBD_STATE_DEFAULT;
     usbd->pDesc = (USBD_DescriptorsTypeDef*)&pyb_usbdd_descriptors;
     usbd->pClass = &pyb_usbdd_class;
@@ -1271,12 +865,7 @@ static void pyb_usbdd_init(pyb_usbdd_obj_t *self, int phy_id) {
 
 static void pyb_usbdd_start(pyb_usbdd_obj_t *self) {
     if (!self->started) {
-        #if defined(STM32H7)
-        PWR->CR3 |= PWR_CR3_USB33DEN;
-        while (!(PWR->CR3 & PWR_CR3_USB33RDY)) {
-        }
-        #endif
-        USBD_LL_Init(&self->hUSBDDevice, 0);
+        USBD_LL_Init(&self->hUSBDDevice, 0, usbd_fifo_size);
         USBD_LL_Start(&self->hUSBDDevice);
         self->started = true;
     }
@@ -1299,10 +888,14 @@ static int pyb_usbdd_shutdown(void) {
 
 #define RESET_MODE_NUM_STATES (4)
 #define RESET_MODE_TIMEOUT_CYCLES (8)
+#ifdef LED2
 #ifdef LED3
 #define RESET_MODE_LED_STATES 0x8421
 #else
 #define RESET_MODE_LED_STATES 0x7421
+#endif
+#else
+#define RESET_MODE_LED_STATES 0x3210
 #endif
 
 static int get_reset_mode(void) {
@@ -1344,9 +937,6 @@ static void do_reset(void) {
     led_state_all(0);
     mp_hal_delay_ms(50);
     pyb_usbdd_shutdown();
-    #if defined(MBOOT_I2C_SCL)
-    i2c_slave_shutdown(MBOOT_I2Cx, I2Cx_EV_IRQn);
-    #endif
     mp_hal_delay_ms(50);
     NVIC_SystemReset();
 }
@@ -1354,34 +944,21 @@ static void do_reset(void) {
 uint32_t SystemCoreClock;
 
 extern PCD_HandleTypeDef pcd_fs_handle;
-extern PCD_HandleTypeDef pcd_hs_handle;
 
 void stm32_main(int initial_r0) {
-    #if defined(STM32F4)
-    #if INSTRUCTION_CACHE_ENABLE
-    __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
-    #endif
-    #if DATA_CACHE_ENABLE
-    __HAL_FLASH_DATA_CACHE_ENABLE();
-    #endif
     #if PREFETCH_ENABLE
     __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
-    #endif
-    #elif defined(STM32F7)
-    #if ART_ACCLERATOR_ENABLE
-    __HAL_FLASH_ART_ENABLE();
-    #endif
     #endif
 
     NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
 
-    #if USE_CACHE && defined(STM32F7)
-    SCB_EnableICache();
-    SCB_EnableDCache();
-    #endif
-
     #if defined(MBOOT_BOARD_EARLY_INIT)
     MBOOT_BOARD_EARLY_INIT();
+    #endif
+
+    #if defined(MBOOT_NORFLASH_ADDR)
+    SystemClock_Config();
+    mp_norflash_init();
     #endif
 
     #ifdef MBOOT_BOOTPIN_PIN
@@ -1395,30 +972,29 @@ void stm32_main(int initial_r0) {
         goto enter_bootloader;
     }
 
+    #if !defined(MBOOT_NORFLASH_ADDR)
     // MCU starts up with HSI
     SystemCoreClock = HSI_VALUE;
-
+    #endif
     int reset_mode = get_reset_mode();
-    uint32_t msp = *(volatile uint32_t*)APPLICATION_ADDR;
+    uint32_t msp = *(volatile uint32_t*)(APPLICATION_ADDR);
     if (reset_mode != 4 && (msp & APP_VALIDITY_BITS) == 0) {
         // not DFU mode so jump to application, passing through reset_mode
         // undo our DFU settings
         // TODO probably should disable all IRQ sources first
-        #if USE_CACHE && defined(STM32F7)
-        SCB_DisableICache();
-        SCB_DisableDCache();
-        #endif
         __set_MSP(msp);
+        // SCB->VTOR = APPLICATION_ADDR;
         ((void (*)(uint32_t)) *((volatile uint32_t*)(APPLICATION_ADDR + 4)))(reset_mode);
     }
 
 enter_bootloader:
-
     // Init subsystems (get_reset_mode() may call these, calling them again is ok)
     led_init();
 
     // set the system clock to be HSE
+    #if !defined(MBOOT_NORFLASH_ADDR)
     SystemClock_Config();
+    #endif
 
     #if USE_USB_POLLING
     // irqs with a priority value greater or equal to "pri" will be disabled
@@ -1426,16 +1002,6 @@ enter_bootloader:
     uint32_t pri = 2;
     pri <<= (8 - __NVIC_PRIO_BITS);
     __ASM volatile ("msr basepri_max, %0" : : "r" (pri) : "memory");
-    #endif
-
-    #if defined(MBOOT_SPIFLASH_ADDR)
-    MBOOT_SPIFLASH_SPIFLASH->config = MBOOT_SPIFLASH_CONFIG;
-    mp_spiflash_init(MBOOT_SPIFLASH_SPIFLASH);
-    #endif
-
-    #if defined(MBOOT_SPIFLASH2_ADDR)
-    MBOOT_SPIFLASH2_SPIFLASH->config = MBOOT_SPIFLASH2_CONFIG;
-    mp_spiflash_init(MBOOT_SPIFLASH2_SPIFLASH);
     #endif
 
     #if MBOOT_FSLOAD
@@ -1452,17 +1018,13 @@ enter_bootloader:
     #endif
 
     dfu_init();
-
-    pyb_usbdd_init(&pyb_usbdd, pyb_usbdd_detect_port());
+	{// USB detect reset
+		mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_OUT, MP_HAL_PIN_PULL_DOWN, 0);
+		mp_hal_pin_low(pin_A12);
+		mp_hal_delay_ms(200); // pin's state keep low with 200ms
+	}
+    pyb_usbdd_init(&pyb_usbdd);
     pyb_usbdd_start(&pyb_usbdd);
-
-    #if defined(MBOOT_I2C_SCL)
-    initial_r0 &= 0x7f;
-    if (initial_r0 == 0) {
-        initial_r0 = 0x23; // Default I2C address
-    }
-    i2c_init(initial_r0);
-    #endif
 
     led_state_all(0);
 
@@ -1470,19 +1032,15 @@ enter_bootloader:
     uint32_t ss = systick_ms;
     int ss2 = -1;
     #endif
+
     for (;;) {
         #if USE_USB_POLLING
-        #if MBOOT_USB_AUTODETECT_PORT
-        if (USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) {
+        if ((USB->ISTR & USB->CNTR) >> 8) {
             HAL_PCD_IRQHandler(&pcd_fs_handle);
         }
-        #endif
         if (!pyb_usbdd.tx_pending) {
             dfu_process();
         }
-        #endif
-
-        #if USE_USB_POLLING
         //__WFI(); // slows it down way too much; might work with 10x faster systick
         if (systick_ms - ss > 50) {
             ss += 50;
@@ -1540,16 +1098,8 @@ void SysTick_Handler(void) {
     SysTick->CTRL;
 }
 
-#if defined(MBOOT_I2C_SCL)
-void I2Cx_EV_IRQHandler(void) {
-    i2c_slave_ev_irq_handler(MBOOT_I2Cx);
-}
-#endif
-
 #if !USE_USB_POLLING
-#if MBOOT_USB_AUTODETECT_PORT
-void OTG_FS_IRQHandler(void) {
+void USB_LP_CAN1_RX0_IRQHandler(void) {
     HAL_PCD_IRQHandler(&pcd_fs_handle);
 }
-#endif
 #endif

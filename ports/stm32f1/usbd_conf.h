@@ -51,6 +51,9 @@
 
 #define USBD_DEBUG_LEVEL                      0
 
+#define USBD_PMA_RESERVE                      (64)
+#define USBD_PMA_NUM_FIFO                     (8)
+
 #endif // MICROPY_INCLUDED_STM32_USBD_CONF_H
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

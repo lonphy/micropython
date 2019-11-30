@@ -32,7 +32,7 @@
   * @author  MCD Application Team
   * @version V1.0.1
   * @date    26-February-2014
-  * @brief   CMSIS Cortex-M4/M7 Device Peripheral Access Layer System Source File.
+  * @brief   CMSIS Cortex-M3 Device Peripheral Access Layer System Source File.
   *
   *   This file provides two functions and one global variable to be called from
   *   user application:
@@ -121,8 +121,9 @@ uint32_t SystemCoreClock = 72000000U;
   */
 void SystemInit(void) {
 	/* Set configured startup clk source */
-    BIT_BAND_SET(RCC->CR, RCC_CR_HSION_Pos);
+    RCC->CR |= RCC_CR_HSION;
 
+    #if MICROPY_HW_USES_BOOTLOADER
 	/* Reset CFGR register */
 	RCC->CFGR &= 0xF8FF0000U;
 
@@ -137,6 +138,7 @@ void SystemInit(void) {
 
 	/* Disable all interrupts */
 	RCC->CIR = 0x009F0000U;
+    #endif
 
 	/* Configure the Vector Table location add offset address ------------------*/
 #ifdef MICROPY_HW_VTOR
@@ -169,6 +171,7 @@ void SystemInit(void) {
   * Timers run from APBx if APBx_PRESC=1, else 2x APBx
   */
 void SystemClock_Config(void) {
+    #if MICROPY_HW_USES_BOOTLOADER
 	/* Enable Power Control clock */
 	__HAL_RCC_PWR_CLK_ENABLE();
 
@@ -198,6 +201,7 @@ void SystemClock_Config(void) {
 	if (powerctrl_rcc_clock_config_pll(&RCC_ClkInitStruct) != 0) {
 		__fatal_error("HAL_RCC_ClockConfig");
 	}
+    #endif
 }
 
 #ifdef DATA_IN_ExtSRAM

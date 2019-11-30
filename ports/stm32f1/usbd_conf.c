@@ -51,8 +51,8 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd) {
     if (hpcd->Instance == USB) {
 
         // default speed is high
-        mp_hal_pin_config(pin_A11, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_NONE, GPIO_AF10_USB);
-        mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_NONE, GPIO_AF10_USB);
+        mp_hal_pin_config(pin_A11, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_NONE, 0);
+        mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_NONE, 0);
 
         // Enable USB FS Clocks
         __HAL_RCC_USB_CLK_ENABLE();
@@ -197,7 +197,7 @@ void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd) {
   * @param  pdev: Device handle
   * @retval USBD Status
   */
-USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev, int high_speed) {
+USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev, int high_speed, const uint8_t *fifo_size) {
     if (pdev->id ==  0) {
         // Set LL Driver parameters
         pcd_fs_handle.Instance = USB;
@@ -229,29 +229,12 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev, int high_speed) {
 		
 
         // We have 512 byte in total to use here
-        #if MICROPY_HW_USB_CDC_NUM == 2
-		// TODO: 这里没有计算， 暂时不能用
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x00 , PCD_SNG_BUF, 0x18);  // EP0,          32B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x80 , PCD_SNG_BUF, 0x28);  // MSC / HID     64B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x01 , PCD_SNG_BUF, 0x68);  // CDC CMD       16B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x81 , PCD_SNG_BUF, 0x78);  // CDC DATA      32B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x02 , PCD_SNG_BUF, 0x98);  // CDC2 CMD      16B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x82 , PCD_SNG_BUF, 0x108);  // CDC2 DATA     32B
-        #else
-
-		// 使用到EP3, 4个EP * 8 = 32B = 0x20, + 7个s-buf * 64 = 480字节
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x00 , PCD_SNG_BUF, 0x20 );  // EP0,      64B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x80,  PCD_SNG_BUF, 0x60 );  // 64B 需要空出来
-
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x01,  PCD_SNG_BUF, 0xa0 );  // MSC-OUT,  64B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x81,  PCD_SNG_BUF, 0xe0 );  // MSC-IN,   64B
-        
-        HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x02,  PCD_SNG_BUF, 0x120 );  // 未用
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x82,  PCD_SNG_BUF, 0x120 );  // CDC0-CMD, 64B
-		
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x03 , PCD_SNG_BUF, 0x160 );   // CDC0-IN, 64B
-		HAL_PCDEx_PMAConfig(&pcd_fs_handle, 0x83 , PCD_SNG_BUF, 0x1a0 );   // CDC0-OUT, 64B
-        #endif
+        uint32_t fifo_offset = USBD_PMA_RESERVE; // need to reserve some data at start of FIFO
+        for (size_t i = 0; i < USBD_PMA_NUM_FIFO; ++i) {
+            uint16_t ep_addr = ((i & 1) * 0x80) | (i >> 1);
+            HAL_PCDEx_PMAConfig(&pcd_fs_handle, ep_addr, PCD_SNG_BUF, fifo_offset);
+            fifo_offset += fifo_size[i] * 4;
+        }
     }
 
     return USBD_OK;

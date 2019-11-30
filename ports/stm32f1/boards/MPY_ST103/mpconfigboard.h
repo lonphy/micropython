@@ -23,14 +23,6 @@
 #define MICROPY_HW_RTC_USE_LSE      (1)
 #define MICROPY_HW_RTC_USE_US       (1)
 
-
-// IS62WV51216 - 512K * 16bit Memory
-#define MICROPY_HW_EXT_SRAM_ENABLE   (0)
-
-// S29GL128S90 or S29GL128P90 - 128Mbit NorFlash
-// TODO: driver not implement 
-#define MICROPY_HW_EXT_FLASH_ENABLE  (0)
-
 extern void board_early_init(void);
 #define MICROPY_BOARD_EARLY_INIT board_early_init
 
@@ -122,3 +114,17 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 
 #define MICROPY_HW_LED_ON(pin)      (mp_hal_pin_low(pin))
 #define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_high(pin))
+
+/******************************************************************************/
+
+#define MBOOT_USB_AUTODETECT_PORT               (1)
+// NorFlash (S29GL128P10) use 16bit data, all S29GLxxx has the same sector 64K
+// 128Mbit = (128/8)MByte = 16MByte
+#define MBOOT_NORFLASH_ADDR                     (0x64000000)
+#define MBOOT_NORFLASH_BYTE_SIZE                (16 * 1024 * 1024)
+#define MBOOT_NORFLASH_BLOCK_SIZE               (128 * 1024)
+#define MBOOT_NORFLASH_LAYOUT                   "/0x64000000/128*128Kg"
+
+#define MBOOT_BOOTPIN_PIN                       pin_A0
+#define MBOOT_BOOTPIN_ACTIVE                    0
+#define MBOOT_BOOTPIN_PULL                      GPIO_PULLUP

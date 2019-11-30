@@ -11,24 +11,28 @@ $(error Invalid BOARD specified: $(BOARD_DIR))
 endif
 
 include ../../py/mkenv.mk
+-include mpconfigport.mk
 include $(BOARD_DIR)/mpconfigboard.mk
 
 # qstr definitions (must come before including py.mk)
 QSTR_DEFS = qstrdefsport.h $(BUILD)/pins_qstr.h $(BUILD)/modstm_qstr.h
 QSTR_GLOBAL_DEPENDENCIES = mpconfigboard_common.h $(BOARD_DIR)/mpconfigboard.h
 
+# File containing description of content to be frozen into firmware.
+FROZEN_MANIFEST ?= boards/manifest.py
+
 # directory containing scripts to be frozen as bytecode
-FROZEN_MPY_DIR ?= modules
+# FROZEN_MPY_DIR ?= modules
 
 # include py core make definitions
 include $(TOP)/py/py.mk
 
+CMSIS_MCU_LOWER = $(shell echo $(CMSIS_MCU) | tr '[:upper:]' '[:lower:]')
+
 LD_DIR=boards
 CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32F1xx/Include
-MCU_SERIES_UPPER = $(shell echo $(MCU_SERIES) | tr '[:lower:]' '[:upper:]')
 HAL_DIR=lib/stm32lib/STM32F1xx_HAL_Driver
 USBDEV_DIR=usbdev
-#USBHOST_DIR=usbhost
 FATFS_DIR=lib/oofatfs
 DFU=$(TOP)/tools/dfu.py
 # may need to prefix dfu-util with sudo
@@ -39,7 +43,8 @@ DEVICE=0483:df11
 STFLASH ?= st-flash
 OPENOCD ?= openocd
 OPENOCD_CONFIG ?= boards/openocd_stm32f1.cfg
-STARTUP_FILE ?= boards/startup_stm32$(MCU_SERIES).o
+STARTUP_FILE ?= lib/stm32lib/CMSIS/STM32F1xx/Source/Templates/gcc/startup_$(CMSIS_MCU_LOWER).o
+SYSTEM_FILE ?= lib/stm32lib/CMSIS/STM32F1xx/Source/Templates/system_stm32f1xx.o
 
 # Select the cross compile prefix
 CROSS_COMPILE ?= arm-none-eabi-
@@ -51,7 +56,6 @@ INC += -I$(TOP)/lib/cmsis/inc
 INC += -I$(CMSIS_DIR)/
 INC += -I$(TOP)/$(HAL_DIR)/Inc
 INC += -I$(USBDEV_DIR)/core/inc -I$(USBDEV_DIR)/class/inc
-#INC += -I$(USBHOST_DIR)
 INC += -Ilwip_inc
 
 # Basic Cortex-M flags
@@ -339,13 +343,13 @@ $(TOP)/lib/stm32lib/README.md:
 	$(ECHO) "stm32lib submodule not found, fetching it now..."
 	(cd $(TOP) && git submodule update --init lib/stm32lib)
 
-ifneq ($(FROZEN_DIR),)
+ifneq ($(FROZEN_MANIFEST)$(FROZEN_DIR),)
 # To use frozen source modules, put your .py files in a subdirectory (eg scripts/)
 # and then invoke make with FROZEN_DIR=scripts (be sure to build from scratch).
 CFLAGS += -DMICROPY_MODULE_FROZEN_STR
 endif
 
-ifneq ($(FROZEN_MPY_DIR),)
+ifneq ($(FROZEN_MANIFEST)$(FROZEN_MPY_DIR),)
 # To use frozen bytecode, put your .py files in a subdirectory (eg frozen/) and
 # then invoke make with FROZEN_MPY_DIR=frozen (be sure to build from scratch).
 CFLAGS += -DMICROPY_QSTR_EXTRA_POOL=mp_qstr_frozen_const_pool
@@ -400,7 +404,7 @@ deploy-stlink: $(BUILD)/firmware.dfu
 deploy-openocd: $(BUILD)/firmware.dfu
 	$(ECHO) "Writing $(BUILD)/firmware{0,1}.bin to the board via ST-LINK using OpenOCD"
 	$(Q)$(OPENOCD) -f $(OPENOCD_CONFIG) -c "stm_flash $(BUILD)/firmware0.bin $(TEXT0_ADDR) $(BUILD)/firmware1.bin $(TEXT1_ADDR)"
-
+	
 $(BUILD)/firmware.dfu: $(BUILD)/firmware.elf
 	$(ECHO) "GEN $@"
 	$(Q)$(OBJCOPY) -O binary $(addprefix -j ,$(TEXT0_SECTIONS)) $^ $(BUILD)/firmware0.bin
@@ -420,8 +424,8 @@ $(BUILD)/firmware.elf: $(OBJ)
 ifneq ($(TEXT0_ADDR),0x08000000)
 	$(ECHO) "INFO: this build requires mboot to be installed first"
 endif
-ifeq ($(TEXT1_ADDR),0x90000000)
-	$(ECHO) "INFO: this build places firmware in external QSPI flash"
+ifeq ($(TEXT1_ADDR),0x64000000)
+	$(ECHO) "INFO: this build places firmware in external FMSC flash"
 endif
 
 PLLVALUES = boards/pllvalues.py

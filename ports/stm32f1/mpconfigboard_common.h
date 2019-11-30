@@ -192,6 +192,15 @@
 // Pin definition header file
 #define MICROPY_PIN_DEFS_PORT_H "pin_defs_stm32.h"
 
+#ifndef MICROPY_HW_USB_CDC_NUM
+#define MICROPY_HW_USB_CDC_NUM (1)
+#endif
+#ifndef MICROPY_HW_USB_MSC
+#define MICROPY_HW_USB_MSC (MICROPY_HW_ENABLE_USB)
+#endif
+#ifndef MICROPY_HW_USB_HID
+#define MICROPY_HW_USB_HID (MICROPY_HW_ENABLE_USB)
+#endif
 
 #define MP_HAL_CLEANINVALIDATE_DCACHE(addr, size)
 #define MP_HAL_CLEAN_DCACHE(addr, size)

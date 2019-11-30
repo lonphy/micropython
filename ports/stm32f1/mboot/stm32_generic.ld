@@ -6,7 +6,7 @@
 MEMORY
 {
     FLASH_BL (rx)   : ORIGIN = 0x08000000, LENGTH = 32K /* sector 0 (can be 32K) */
-    RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 96K
+    RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 20K /* generic minimum size is 20K, eg STM32F103x8x */
 }
 
 /* produce a link error if there is not this amount of RAM for these sections */
