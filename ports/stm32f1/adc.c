@@ -36,7 +36,7 @@
 
 #if MICROPY_HW_ENABLE_ADC
 
-/// \moduleref pyb
+/// \moduleref machine
 /// \class ADC - analog to digital conversion: read analog values on a pin
 ///
 /// Usage:
@@ -51,48 +51,34 @@
 ///     val = adc.read_core_vref()      # read MCU VREF
 
 /* ADC defintions */
-
-
 #define ADCx                    (ADC1)
 #define PIN_ADC_MASK            PIN_ADC1
 #define pin_adc_table           pin_adc1
 
-#define ADCx_CLK_ENABLE         __HAL_RCC_ADC1_CLK_ENABLE
-#define ADC_NUM_CHANNELS        (19)
+#define ADC_NUM_CHANNELS        (18)
 
 #define ADC_FIRST_GPIO_CHANNEL  (0)
 #define ADC_LAST_GPIO_CHANNEL   (15)
-#define ADC_SCALE_V             (3.3f)
-#define ADC_CAL_ADDRESS         (0x1ffff7ba)
-#define ADC_CAL1                ((uint16_t*)0x1ffff7b8)
-#define ADC_CAL2                ((uint16_t*)0x1ffff7c2)
-#define ADC_CAL_BITS            (12)
+#define VREFIN_CAL              (1635)
+#define ADC_SCALE_V             (3.0f)
 
-#ifndef ADC_RESOLUTION_6B
-#define ADC_RESOLUTION_6B 6
-#endif
-#ifndef ADC_RESOLUTION_8B
-#define ADC_RESOLUTION_8B 8
-#endif
-#ifndef ADC_RESOLUTION_10B
-#define ADC_RESOLUTION_10B 10
-#endif
 #ifndef ADC_RESOLUTION_12B
-#define ADC_RESOLUTION_12B 12
+#define ADC_RESOLUTION_12B  (12)
 #endif
-
-#define VBAT_DIV (2) /* TODO: fixme */
 
 // Timeout for waiting for end-of-conversion, in ms
 #define EOC_TIMEOUT (10)
 
 /* Core temperature sensor definitions */
-#define CORE_TEMP_V25          (943)  /* (0.76v/3.3v)*(2^ADC resoultion) */
-#define CORE_TEMP_AVG_SLOPE    (3)    /* (2.5mv/3.3v)*(2^ADC resoultion) */
+#define CORE_TEMP_V25          (1430.0f)
+#define CORE_TEMP_AVG_SLOPE    (4300.0f)
 
-// scale and calibration values for VBAT and VREF
-#define ADC_SCALE (ADC_SCALE_V / ((1 << ADC_CAL_BITS) - 1))
-#define VREFIN_CAL ((uint16_t *)ADC_CAL_ADDRESS)
+#define ADC_SCALE              (ADC_SCALE_V / ((1 << ADC_RESOLUTION_12B) - 1))
+
+#ifndef __HAL_ADC_IS_CHANNEL_INTERNAL
+#define __HAL_ADC_IS_CHANNEL_INTERNAL(channel) \
+     (channel == ADC_CHANNEL_VREFINT || channel == ADC_CHANNEL_TEMPSENSOR)
+#endif
 
 typedef struct _pyb_obj_adc_t {
     mp_obj_base_t base;
@@ -103,11 +89,6 @@ typedef struct _pyb_obj_adc_t {
 
 // convert user-facing channel number into internal channel number
 static inline uint32_t adc_get_internal_channel(uint32_t channel) {
-    // on F1 MCUs we want channel 16 to always be the TEMPSENSOR
-    // (on some MCUs ADC_CHANNEL_TEMPSENSOR=16, on others it doesn't)
-    if (channel == 16) {
-        channel = ADC_CHANNEL_TEMPSENSOR;
-    }
     return channel;
 }
 
@@ -124,24 +105,22 @@ STATIC void adc_wait_for_eoc_or_timeout(int32_t timeout) {
     }
 }
 
-STATIC void adcx_clock_enable(void) {
-	/* TODO: fixme */
-    ADCx_CLK_ENABLE();
-}
-
 STATIC void adcx_init_periph(ADC_HandleTypeDef *adch, uint32_t resolution) {
-    adcx_clock_enable();
+    __HAL_RCC_ADC1_CLK_ENABLE();
 
     adch->Instance                   = ADCx;
-    // adch->Init.Resolution            = resolution; F1 为固定12bit分辨率
-    adch->Init.ContinuousConvMode    = DISABLE;             // 指定是否连续转换
-    adch->Init.DiscontinuousConvMode = DISABLE;             // 没看懂的一个属性, 只有上一个禁止的情况才可开启
-    // adch->Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV2;
-    adch->Init.ScanConvMode          = DISABLE;             // 常规组和注入组的序列器
-    adch->Init.DataAlign             = ADC_DATAALIGN_RIGHT; // 数据对齐方式
-    // adch->Init.DMAContinuousRequests = DISABLE;
+    adch->Init.NbrOfConversion       = 1;
+    adch->Init.NbrOfDiscConversion   = 0;
+    adch->Init.ContinuousConvMode    = DISABLE;
+    adch->Init.DiscontinuousConvMode = DISABLE;
+    adch->Init.ScanConvMode          = DISABLE;
+    adch->Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+    adch->Init.ExternalTrigConv      = ADC_SOFTWARE_START;
+    adch->Init.DataAlign             = ADC_DATAALIGN_RIGHT;
 
     HAL_ADC_Init(adch);
+
+    HAL_ADCEx_Calibration_Start(adch);
 }
 
 STATIC void adc_init_single(pyb_obj_adc_t *adc_obj) {
@@ -155,16 +134,14 @@ STATIC void adc_init_single(pyb_obj_adc_t *adc_obj) {
         mp_hal_pin_config(pin, MP_HAL_PIN_MODE_ADC, MP_HAL_PIN_PULL_NONE, 0);
     }
 
-    adcx_init_periph(&adc_obj->handle, 0 /*ADC_RESOLUTION_12B  */);
+    adcx_init_periph(&adc_obj->handle, ADC_RESOLUTION_12B);
 }
 
 STATIC void adc_config_channel(ADC_HandleTypeDef *adc_handle, uint32_t channel) {
     ADC_ChannelConfTypeDef sConfig;
 
     sConfig.Channel = channel;
-    sConfig.Rank = 1;
-	
-	/* TODO: fixme */
+    sConfig.Rank = ADC_REGULAR_RANK_1;
     sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
 
     HAL_ADC_ConfigChannel(adc_handle, &sConfig);
@@ -268,7 +245,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(adc_read_obj, adc_read);
 ///
 /// Example using a Timer object (preferred way):
 ///
-///     adc = pyb.ADC(pyb.Pin.board.X19)    # create an ADC on pin X19
+///     adc = pyb.ADC(pyb.Pin.board.PA1)    # create an ADC on pin PA1
 ///     tim = pyb.Timer(6, freq=10)         # create a timer running at 10Hz
 ///     buf = bytearray(100)                # creat a buffer to store the samples
 ///     adc.read_timed(buf, tim)            # sample 100 values, taking 10s
@@ -321,7 +298,6 @@ STATIC mp_obj_t adc_read_timed(mp_obj_t self_in, mp_obj_t buf_in, mp_obj_t freq_
             HAL_ADC_Start(&self->handle);
         } else {
             // for subsequent samples we can just set the "start sample" bit
-			/*TODO: fixme */
             SET_BIT(ADCx->CR2, ADC_CR2_EXTTRIG);
         }
 
@@ -426,8 +402,7 @@ STATIC mp_obj_t adc_read_timed_multi(mp_obj_t adc_array_in, mp_obj_t buf_array_i
             adc_config_channel(&adc->handle, adc->channel);
             // for the first sample we need to turn the ADC on
             // ADC is started: set the "start sample" bit
-            /*TODO: fixme */
-            SET_BIT(ADCx->CR2, ADC_CR2_EXTTRIG);
+            ADCx->CR2 |= (uint32_t)ADC_CR2_SWSTART;
 
             // wait for sample to complete
             adc_wait_for_eoc_or_timeout(EOC_TIMEOUT);
@@ -479,13 +454,9 @@ typedef struct _pyb_adc_all_obj_t {
 void adc_init_all(pyb_adc_all_obj_t *adc_all, uint32_t resolution, uint32_t en_mask) {
 
     switch (resolution) {
-        case 6:  resolution = ADC_RESOLUTION_6B;  break;
-        case 8:  resolution = ADC_RESOLUTION_8B;  break;
-        case 10: resolution = ADC_RESOLUTION_10B; break;
         case 12: resolution = ADC_RESOLUTION_12B; break;
         default:
-            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError,
-                "resolution %d not supported", resolution));
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "only resolution 12 supported"));
     }
 
     for (uint32_t channel = ADC_FIRST_GPIO_CHANNEL; channel <= ADC_LAST_GPIO_CHANNEL; ++channel) {
@@ -504,27 +475,17 @@ void adc_init_all(pyb_adc_all_obj_t *adc_all, uint32_t resolution, uint32_t en_m
 }
 
 int adc_get_resolution(ADC_HandleTypeDef *adcHandle) {
-	/* 
-    uint32_t res_reg = ADC_GET_RESOLUTION(adcHandle);
-
-    switch (res_reg) {
-        case ADC_RESOLUTION_6B:  return 6;
-        case ADC_RESOLUTION_8B:  return 8;
-        case ADC_RESOLUTION_10B: return 10;
-    }
-	*/
-    return 12;
+    return ADC_RESOLUTION_12B;
 }
 
 STATIC uint32_t adc_config_and_read_ref(ADC_HandleTypeDef *adcHandle, uint32_t channel) {
     uint32_t raw_value = adc_config_and_read_channel(adcHandle, channel);
-    // Scale raw reading to the number of bits used by the calibration constants
-    return raw_value << (ADC_CAL_BITS - adc_get_resolution(adcHandle));
+    return raw_value;
 }
 
 int adc_read_core_temp(ADC_HandleTypeDef *adcHandle) {
     int32_t raw_value = adc_config_and_read_ref(adcHandle, ADC_CHANNEL_TEMPSENSOR);
-    return ((raw_value - CORE_TEMP_V25) / CORE_TEMP_AVG_SLOPE) + 25;
+    return ((raw_value - CORE_TEMP_V25) / CORE_TEMP_AVG_SLOPE) + 25.0f;
 }
 
 #if MICROPY_PY_BUILTINS_FLOAT
@@ -533,22 +494,13 @@ STATIC volatile float adc_refcor = 1.0f;
 
 float adc_read_core_temp_float(ADC_HandleTypeDef *adcHandle) {
     int32_t raw_value = adc_config_and_read_ref(adcHandle, ADC_CHANNEL_TEMPSENSOR);
-    float core_temp_avg_slope = (*ADC_CAL2 - *ADC_CAL1) / 80.0;
-    return (((float)raw_value * adc_refcor - *ADC_CAL1) / core_temp_avg_slope) + 30.0f;
-}
-
-float adc_read_core_vbat(ADC_HandleTypeDef *adcHandle) {
-    uint32_t raw_value = adc_config_and_read_ref(adcHandle, ADC_CHANNEL_VREFINT);
-    return raw_value * VBAT_DIV * ADC_SCALE * adc_refcor;
+    return ((CORE_TEMP_V25 - (float)raw_value * adc_refcor) / CORE_TEMP_AVG_SLOPE ) + 25.0f;
 }
 
 float adc_read_core_vref(ADC_HandleTypeDef *adcHandle) {
     uint32_t raw_value = adc_config_and_read_ref(adcHandle, ADC_CHANNEL_VREFINT);
-
-    // update the reference correction factor
-    adc_refcor = ((float)(*VREFIN_CAL)) / ((float)raw_value);
-
-    return (*VREFIN_CAL) * ADC_SCALE;
+    adc_refcor = ((float)VREFIN_CAL) / ((float)raw_value);
+    return VREFIN_CAL * ADC_SCALE;
 }
 #endif
 
@@ -593,13 +545,6 @@ STATIC mp_obj_t adc_all_read_core_temp(mp_obj_t self_in) {
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(adc_all_read_core_temp_obj, adc_all_read_core_temp);
 
 #if MICROPY_PY_BUILTINS_FLOAT
-STATIC mp_obj_t adc_all_read_core_vbat(mp_obj_t self_in) {
-    pyb_adc_all_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    float data = adc_read_core_vbat(&self->handle);
-    return mp_obj_new_float(data);
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(adc_all_read_core_vbat_obj, adc_all_read_core_vbat);
-
 STATIC mp_obj_t adc_all_read_core_vref(mp_obj_t self_in) {
     pyb_adc_all_obj_t *self = MP_OBJ_TO_PTR(self_in);
     float data  = adc_read_core_vref(&self->handle);
@@ -619,7 +564,6 @@ STATIC const mp_rom_map_elem_t adc_all_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_read_channel), MP_ROM_PTR(&adc_all_read_channel_obj) },
     { MP_ROM_QSTR(MP_QSTR_read_core_temp), MP_ROM_PTR(&adc_all_read_core_temp_obj) },
 #if MICROPY_PY_BUILTINS_FLOAT
-    { MP_ROM_QSTR(MP_QSTR_read_core_vbat), MP_ROM_PTR(&adc_all_read_core_vbat_obj) },
     { MP_ROM_QSTR(MP_QSTR_read_core_vref), MP_ROM_PTR(&adc_all_read_core_vref_obj) },
     { MP_ROM_QSTR(MP_QSTR_read_vref), MP_ROM_PTR(&adc_all_read_vref_obj) },
 #endif
