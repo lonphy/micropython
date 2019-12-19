@@ -10,16 +10,11 @@
 
 #define MICROPY_VFS_FAT             (1)
 #define MICROPY_HW_HAS_FLASH        (1)
-#define MICROPY_HW_HAS_SWITCH       (0)
+#define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_USB       (1)
 #define MICROPY_HW_USB_FS           (1)
 #define MICROPY_HW_ENABLE_ADC       (0)
-
-#define MICROPY_HW_ENABLE_SDCARD    (0)
-#define MICROPY_HW_SDCARD_DETECT_PIN        (pin_A1)
-#define MICROPY_HW_SDCARD_DETECT_PULL       (GPIO_PULLUP)
-#define MICROPY_HW_SDCARD_DETECT_PRESENT    (GPIO_PIN_RESET)
 
 // HSE is 8MHz
 #define MICROPY_HW_CLK_USE_HSE      (1)
@@ -29,8 +24,7 @@
 
 // The board has a 32kHz crystal for the RTC
 #define MICROPY_HW_RTC_USE_LSE      (1)
-#define MICROPY_HW_RTC_USE_US       (0)
-//#define MICROPY_HW_RTC_USE_CALOUT   (0)
+#define MICROPY_HW_RTC_USE_US       (1)
 
 // -------------------- soft spi flash W25Q128(default W25Q16) --------------------
 #define MICROPY_HW_SPIFLASH_SIZE_BITS (128 * 1024 * 1024)
@@ -44,12 +38,10 @@
 extern struct _spi_bdev_t spi_bdev;
 extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_BDEV_IOCTL(op, arg) ( \
-    ((op) == BDEV_IOCTL_NUM_BLOCKS) ? \
-        (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
-            ((op) == BDEV_IOCTL_INIT) ? \
-                spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config) : \
-                spi_bdev_ioctl(&spi_bdev, (op), (arg)) \
-    )
+    (op) == BDEV_IOCTL_NUM_BLOCKS ? (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
+    (op) == BDEV_IOCTL_INIT ? spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config)  : \
+                              spi_bdev_ioctl(&spi_bdev, (op), (arg))                       \
+)
 
 #define MICROPY_HW_BDEV_READBLOCKS(dest, bl, n) spi_bdev_readblocks(&spi_bdev, (dest), (bl), (n))
 #define MICROPY_HW_BDEV_WRITEBLOCKS(src, bl, n) spi_bdev_writeblocks(&spi_bdev, (src), (bl), (n))
@@ -84,12 +76,10 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 // CAN (no chip)
 
 // KEY0 has no pullup or pulldown, and pressing the switch makes the input go low
-#if MICROPY_HW_HAS_SWITCH == 1
 #define MICROPY_HW_USRSW_PIN        (pin_C12)
 #define MICROPY_HW_USRSW_PULL       (GPIO_PULLUP)
 #define MICROPY_HW_USRSW_EXTI_MODE  (GPIO_MODE_IT_FALLING)
 #define MICROPY_HW_USRSW_PRESSED    (0)
-#endif
 
 // LEDs
 #define MICROPY_HW_LED1             (pin_A1)  // RED LED D1

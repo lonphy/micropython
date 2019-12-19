@@ -4,15 +4,14 @@
 #define MICROPY_HW_MCU_NAME         "STM32F103ZE"
 
 #define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE (0)
-#define MICROPY_EMIT_THUMB          (0)
-#define MICROPY_EMIT_INLINE_THUMB   (0)
 
-#define MICROPY_VFS_FAT             (1)
 #define MICROPY_HW_HAS_FLASH        (1)
 #define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_USB       (1)
 #define MICROPY_HW_USB_FS           (1)
+#define MICROPY_HW_ENABLE_ADC       (1)
+#define MICROPY_HW_ENABLE_DAC       (1)
 
 // HSE is 8MHz
 #define MICROPY_HW_CLK_USE_HSE      (1)
@@ -23,9 +22,6 @@
 // The board has a 32kHz crystal for the RTC
 #define MICROPY_HW_RTC_USE_LSE      (1)
 #define MICROPY_HW_RTC_USE_US       (1)
-
-// ExtSRAM
-#define MICROPY_HW_EXT_SRAM_ENABLE   (1)
 
 
 // -------------------- soft spi flash W25Q128 --------------------
@@ -40,12 +36,10 @@
 extern struct _spi_bdev_t spi_bdev;
 extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_BDEV_IOCTL(op, arg) ( \
-    ((op) == BDEV_IOCTL_NUM_BLOCKS) ? \
-        (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
-            ((op) == BDEV_IOCTL_INIT) ? \
-                spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config) : \
-                spi_bdev_ioctl(&spi_bdev, (op), (arg)) \
-    )
+    (op) == BDEV_IOCTL_NUM_BLOCKS ? (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
+    (op) == BDEV_IOCTL_INIT ? spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config)  : \
+                              spi_bdev_ioctl(&spi_bdev, (op), (arg))                       \
+)
 
 #define MICROPY_HW_BDEV_READBLOCKS(dest, bl, n) spi_bdev_readblocks(&spi_bdev, (dest), (bl), (n))
 #define MICROPY_HW_BDEV_WRITEBLOCKS(src, bl, n) spi_bdev_writeblocks(&spi_bdev, (src), (bl), (n))
@@ -108,3 +102,14 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 
 #define MICROPY_HW_LED_ON(pin)      (mp_hal_pin_low(pin))
 #define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_high(pin))
+
+// SRAM
+#define MICROPY_HW_SRAM_SIZE                (8 / 8 * 1024 * 1024)  // 8 Mbit
+#define MICROPY_HW_SRAM_STARTUP_TEST        (1)
+#define MICROPY_HEAP_START                  sram_start()
+#define MICROPY_HEAP_END                    sram_end()
+
+#define MICROPY_HW_SRAM_BANK                (FSMC_BANK1_3)
+#define MICROPY_HW_SRAM_TIMING_ADDSET       (0)
+#define MICROPY_HW_SRAM_TIMING_ADDHLD       (0)
+#define MICROPY_HW_SRAM_TIMING_DATAST       (2)

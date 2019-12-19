@@ -4,20 +4,22 @@
 #define MICROPY_HW_MCU_NAME         "STM32F103ZG"
 
 #define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE (0)
-
 #define MICROPY_HW_HAS_FLASH        (1)
-#define MICROPY_HW_HAS_SWITCH       (0)
+#define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_USB       (1)
 #define MICROPY_HW_USB_FS           (1)
 #define MICROPY_HW_ENABLE_ADC       (1)
 #define MICROPY_HW_ENABLE_DAC       (1)
 
+#define MICROPY_HW_ENABLE_SPIFLASH  (1)
+#define MICROPY_HW_ENABLE_NORFLASH  (0)
+
 // HSE is 8MHz
-#define MICROPY_HW_CLK_USE_HSE (1)
-#define MICROPY_HW_SYSCLK_SRC  (RCC_SYSCLKSOURCE_PLLCLK)
-#define MICROPY_HW_HSE_PREDIV  (RCC_HSE_PREDIV_DIV1)
-#define MICROPY_HW_CLK_PLLMUL  (RCC_PLL_MUL9)
+#define MICROPY_HW_CLK_USE_HSE      (1)
+#define MICROPY_HW_SYSCLK_SRC       (RCC_SYSCLKSOURCE_PLLCLK)
+#define MICROPY_HW_HSE_PREDIV       (RCC_HSE_PREDIV_DIV1)
+#define MICROPY_HW_CLK_PLLMUL       (RCC_PLL_MUL9)
 
 // The board has a 32.768kHz crystal for the RTC
 #define MICROPY_HW_RTC_USE_LSE      (1)
@@ -27,29 +29,26 @@ extern void board_early_init(void);
 #define MICROPY_BOARD_EARLY_INIT board_early_init
 
 // -------------------- soft spi flash W25Q128 --------------------
-#define MICROPY_HW_SPIFLASH_SIZE_BITS (128 * 1024 * 1024)
-
-// SPI1's pins
-#define MICROPY_HW_SPIFLASH_CS      (pin_G15)
-#define MICROPY_HW_SPIFLASH_SCK     (pin_B3)
-#define MICROPY_HW_SPIFLASH_MISO    (pin_B4)
-#define MICROPY_HW_SPIFLASH_MOSI    (pin_B5)
-
+#if MICROPY_HW_ENABLE_SPIFLASH
+#define MPICRPY_HW_SPIFLASH_SIZE_BITS (128 * 1024 * 1024)
+#define MICROPY_HW_SPIFLASH_CS        (pin_G15)
+#define MICROPY_HW_SPIFLASH_SCK       (pin_B3)
+#define MICROPY_HW_SPIFLASH_MISO      (pin_B4)
+#define MICROPY_HW_SPIFLASH_MOSI      (pin_B5)
 
 extern struct _spi_bdev_t spi_bdev;
 extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_BDEV_IOCTL(op, arg) ( \
-    ((op) == BDEV_IOCTL_NUM_BLOCKS) ? \
-        (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
-            ((op) == BDEV_IOCTL_INIT) ? \
-                spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config) : \
-                spi_bdev_ioctl(&spi_bdev, (op), (arg)) \
-    )
+    (op) == BDEV_IOCTL_NUM_BLOCKS ? (MPICRPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
+    (op) == BDEV_IOCTL_INIT ? spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config)  : \
+                              spi_bdev_ioctl(&spi_bdev, (op), (arg))                         \
+)
 #define MICROPY_HW_BDEV_READBLOCKS(dest, bl, n) spi_bdev_readblocks(&spi_bdev, (dest), (bl), (n))
 #define MICROPY_HW_BDEV_WRITEBLOCKS(src, bl, n) spi_bdev_writeblocks(&spi_bdev, (src), (bl), (n))
+#endif // MICROPY_HW_ENABLE_SPIFLASH
 
 // --------------------------------------------------------------
-// USART1 use to auto download with hardware
+// USART1 for firmware download with ch340
 #define MICROPY_HW_UART1_TX     (pin_A9)
 #define MICROPY_HW_UART1_RX     (pin_A10)
 
@@ -61,13 +60,15 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_UART3_TX     (pin_B10)
 #define MICROPY_HW_UART3_RX     (pin_B11)
 
-// #define MICROPY_HW_UART_REPL        MACHINE_UART_1
-// #define MICROPY_HW_UART_REPL_BAUD   115200
+#define MICROPY_HW_UART_REPL        MACHINE_UART_1
+#define MICROPY_HW_UART_REPL_BAUD   115200
 // --------------------------------------------------------------
 
 // I2C busses, need remap, in ./init.c
 #define MICROPY_HW_I2C1_SCL (pin_B8)
 #define MICROPY_HW_I2C1_SDA (pin_B9)
+
+// SPI1 for NorFlash
 
 // SPI2 for Screen Touch
 #define MICROPY_HW_SPI2_NSS  (pin_B12)
@@ -111,12 +112,22 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_LED3_PWM         { TIM3, 3, TIM_CHANNEL_2, 0 } /* LED3 with TIM3_CH2 PWM */
 #define MICROPY_HW_LED4_PWM         { TIM3, 3, TIM_CHANNEL_1, 0 } /* LED4 with TIM3_CH1 PWM */
 
-
 #define MICROPY_HW_LED_ON(pin)      (mp_hal_pin_low(pin))
 #define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_high(pin))
 
-/******************************************************************************/
+// SRAM
+#define MICROPY_HW_SRAM_SIZE                (8 / 8 * 1024 * 1024)  // 8 Mbit
+#define MICROPY_HW_SRAM_STARTUP_TEST        (1)
+#define MICROPY_HEAP_START                  sram_start()
+#define MICROPY_HEAP_END                    sram_end()
 
+#define MICROPY_HW_SRAM_BANK                (FSMC_BANK1_3)
+#define MICROPY_HW_SRAM_TIMING_ADDSET       (0)
+#define MICROPY_HW_SRAM_TIMING_ADDHLD       (0)
+#define MICROPY_HW_SRAM_TIMING_DATAST       (2)
+
+/******************************************************************************/
+#if MICROPY_HW_ENABLE_NORFLASH
 #define MBOOT_USB_AUTODETECT_PORT               (1)
 // NorFlash (S29GL128P10) use 16bit data, all S29GLxxx has the same sector 64K
 // 128Mbit = (128/8)MByte = 16MByte
@@ -128,3 +139,4 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MBOOT_BOOTPIN_PIN                       pin_A0
 #define MBOOT_BOOTPIN_ACTIVE                    0
 #define MBOOT_BOOTPIN_PULL                      GPIO_PULLUP
+#endif // MICROPY_HW_ENABLE_NORFLASH

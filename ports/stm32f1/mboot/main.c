@@ -980,10 +980,8 @@ void stm32_main(int initial_r0) {
     uint32_t msp = *(volatile uint32_t*)(APPLICATION_ADDR);
     if (reset_mode != 4 && (msp & APP_VALIDITY_BITS) == 0) {
         // not DFU mode so jump to application, passing through reset_mode
-        // undo our DFU settings
-        // TODO probably should disable all IRQ sources first
+        // DO NOT reset DFU setings, keep FSMC and RCC
         __set_MSP(msp);
-        // SCB->VTOR = APPLICATION_ADDR;
         ((void (*)(uint32_t)) *((volatile uint32_t*)(APPLICATION_ADDR + 4)))(reset_mode);
     }
 

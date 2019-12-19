@@ -79,84 +79,6 @@
 
 void __fatal_error(const char *msg);
 
-const uint8_t AHBPrescTable[16U] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9};
-const uint8_t APBPrescTable[8U] =  {0, 0, 0, 0, 1, 2, 3, 4};
-
-/************************* Miscellaneous Configuration ************************/
-
-/*!< user need to use external SRAM  */
-#ifdef DATA_IN_ExtSRAM
-    #undef DATA_IN_ExtSRAM
-#endif
-
-#if (defined(STM32F103xE) || defined(STM32F103xG)) && \
-    defined(MICROPY_HW_EXT_SRAM_ENABLE) && MICROPY_HW_EXT_SRAM_ENABLE
-    #define DATA_IN_ExtSRAM
-    static void SystemInit_ExtMemCtl(void);
-#endif
-
-/*!< Uncomment the following line if you need to relocate your vector Table in
-     Internal SRAM. */
-/* #define VECT_TAB_SRAM */
-#define VECT_TAB_OFFSET 0x00 /*!< Vector Table base offset field. \
-								  This value must be a multiple of 0x200. */
-/******************************************************************************/
-
-/* This variable is updated in three ways:
-      1) by calling CMSIS function SystemCoreClockUpdate()
-      2) by calling HAL API function HAL_RCC_GetHCLKFreq()
-      3) each time HAL_RCC_ClockConfig() is called to configure the system clock frequency
-         Note: If you use this function to configure the system clock; then there
-               is no need to call the 2 first functions listed above, since SystemCoreClock
-               variable is updated automatically.
-  */
-uint32_t SystemCoreClock = 72000000U;
-
-/**
-  * @brief  Setup the microcontroller system
-  *         Initialize the FPU setting, vector table location and External memory
-  *         configuration.
-  * @param  None
-  * @retval None
-  */
-void SystemInit(void) {
-	/* Set configured startup clk source */
-    RCC->CR |= RCC_CR_HSION;
-
-    #if MICROPY_HW_USES_BOOTLOADER
-	/* Reset CFGR register */
-	RCC->CFGR &= 0xF8FF0000U;
-
-	/* Reset HSxON, CSSON and PLLON bits */
-	RCC->CR &= ~(MICROPY_HW_RCC_CR_HSxON | RCC_CR_CSSON | RCC_CR_PLLON);
-
-	/* Reset HSEBYP bit */
-	RCC->CR &= 0xFFFBFFFFU;
-
-	/* Reset PLLSRC, PLLXTPRE, PLLMUL and USBPRE/OTGFSPRE bits */
-	RCC->CFGR &= 0xFF80FFFFU;
-
-	/* Disable all interrupts */
-	RCC->CIR = 0x009F0000U;
-    #endif
-
-	/* Configure the Vector Table location add offset address ------------------*/
-#ifdef MICROPY_HW_VTOR
-	SCB->VTOR = MICROPY_HW_VTOR;
-#elif defined(VECT_TAB_SRAM)
-	SCB->VTOR = SRAM1_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal SRAM */
-#else
-	SCB->VTOR = FLASH_BASE | VECT_TAB_OFFSET; /* Vector Table Relocation in Internal FLASH */
-#endif
-
-#ifdef DATA_IN_ExtSRAM
-    SystemInit_ExtMemCtl();
-#endif
-
-	/* dpgeorge: enable 8-byte stack alignment for IRQ handlers, in accord with EABI */
-	SCB->CCR |= SCB_CCR_STKALIGN_Msk;
-}
-
 /**
   * @brief  System Clock Configuration
   *
@@ -171,8 +93,7 @@ void SystemInit(void) {
   * Timers run from APBx if APBx_PRESC=1, else 2x APBx
   */
 void SystemClock_Config(void) {
-    #if MICROPY_HW_USES_BOOTLOADER
-	/* Enable Power Control clock */
+    /* Enable Power Control clock */
 	__HAL_RCC_PWR_CLK_ENABLE();
 
 	RCC_ClkInitTypeDef RCC_ClkInitStruct = {
@@ -201,60 +122,66 @@ void SystemClock_Config(void) {
 	if (powerctrl_rcc_clock_config_pll(&RCC_ClkInitStruct) != 0) {
 		__fatal_error("HAL_RCC_ClockConfig");
 	}
-    #endif
 }
 
-#ifdef DATA_IN_ExtSRAM
-#define MPY_GPIO_LOCK_PIN(GPIOx, PinIdx, tmp) do{ \
-        tmp = (GPIO_LCKR_LCKK | (PinIdx)); \
-        GPIOx->LCKR = tmp;                 \
-        GPIOx->LCKR = (PinIdx);            \
-        GPIOx->LCKR = tmp;                 \
-        tmp = GPIOx->LCKR;                 \
-        (void)tmp;                         \
-    }while(0)
+#ifdef MBOOT_NORFLASH_ADDR
+/* control register, [ASYNCWAIT(b1), WREN(b1), FACCEN(b1) MWID(b01), MTYP(b10), MBKEN(b1)] */
+#define NOR_FSMC_BCR (0x000090D9U)
 
-void SystemInit_ExtMemCtl(void) {
+/* timing register, [DATAST=7, ADDHLD=0, ADDSET=5] */
+#define NOR_FSMC_BTR (0x10000705U)
+
+// init NorFlash on FSMC
+void mp_norflash_init(void) {
     __IO uint32_t tmpreg;
-    // __IO uint32_t tmp = GPIO_LCKR_LCKK;
 
     /* Enable FSMC clock */
-    RCC->AHBENR = 0x00000114U;
+    RCC->AHBENR |= RCC_AHBENR_FSMCEN;
 
     /* Delay after an RCC peripheral clock enabling */
     tmpreg = READ_BIT(RCC->AHBENR, RCC_AHBENR_FSMCEN);
 
     /* Enable GPIOD, GPIOE, GPIOF and GPIOG clocks */
-    RCC->APB2ENR = 0x000001E0U;
+    RCC->APB2ENR |= 0x000001E0U;
 
     /* Delay after an RCC peripheral clock enabling */
     tmpreg = READ_BIT(RCC->APB2ENR, RCC_APB2ENR_IOPDEN);
     (void)(tmpreg);
 
-    /* ---------------  SRAM Data lines, NOE and NWE configuration ---------------*/
-    /*----------------  SRAM Address lines configuration -------------------------*/
-    /*----------------  NOE and NWE configuration --------------------------------*/
-    /*----------------  NE3 configuration ----------------------------------------*/
-    /*----------------  NBL0, NBL1 configuration ---------------------------------*/
+    /**
+     * FMSC 地址全开(26bit), NE1~NE4 全开 根据Flash地址配置成NorFlash
+     * 
+     * GPIOD -> PD0, PD1, PD4, PD5~PD7, PD8~PD15
+     * GPIOE -> PE2~PE15
+     * GPIOF -> PF0~PF5, PF12~PF15
+     * GPIOG -> PG0~PG5, PG9, PG10, PG12~PG14
+     */
 
-    GPIOD->CRL = 0x44BB44BBU; /* PD0, PD1, PD4, PD5*/
+    GPIOD->CRL = 0xB4BB44BBU; /* PD0, PD1, PD4, PD5~PD7, PD6 is input mode */
     GPIOD->CRH = 0xBBBBBBBBU; /* PD8 ~ PD15 */
-    // MPY_GPIO_LOCK_PIN(GPIOD, 0xFF33U, tmp);
 
-    GPIOE->CRL = 0xB44444BBU; /* PE0, PE1, PE7 */
+    GPIOE->CRL = 0xBBBBBB44U; /* PE2 ~ PE7 */
     GPIOE->CRH = 0xBBBBBBBBU; /* PE8 ~ PE15 */
-    // MPY_GPIO_LOCK_PIN(GPIOE, 0xFF83U, tmp);
 
     GPIOF->CRL = 0x44BBBBBBU; /* PF0 ~ PF5 */
     GPIOF->CRH = 0xBBBB4444U; /* PF12 ~ PF15 */
-    // MPY_GPIO_LOCK_PIN(GPIOF, 0xF03F, tmp);
 
-    GPIOG->CRL = 0x44BBBBBBU; /* PG0 ~ PG5  */
-    GPIOG->CRH = 0x44444B44U; /* PG10 (NE3) */
-    // MPY_GPIO_LOCK_PIN(GPIOG, 0x043F, tmp);
+    GPIOG->CRL = 0x44BBBBBBU; /* PG0 ~ PG5 */
+    GPIOG->CRH = 0x4BBB4BB4U; /* PG9, PG10, PG12~PG14 */
 
-    /*----------------  Enable FSMC Bank1_3 (for NE3) Bank (0x6800 0000)-----------------------*/
-    FSMC_Bank1->BTCR[4U] = 0x00001091U; /* control register, [ WREN(b12), MWID(b4~b5), MBKEN(b0)]*/
-    FSMC_Bank1->BTCR[5U] = 0x00000200U; /* timing register, [CLKDIV=0, BUSTURN=0, DATAST=2, ADDHLD=0, ADDSET=0] */
+/* FSMC Register Config to Nor Flash */
+#if (MBOOT_NORFLASH_ADDR == FSMC_BANK1_1)
+    FSMC_Bank1->BTCR[0U] = NOR_FSMC_BCR;
+    FSMC_Bank1->BTCR[1U] = NOR_FSMC_BTR;
+#elif (MBOOT_NORFLASH_ADDR == FSMC_BANK1_2)
+    FSMC_Bank1->BTCR[2U] = NOR_FSMC_BCR;
+    FSMC_Bank1->BTCR[3U] = NOR_FSMC_BTR;
+#elif (MBOOT_NORFLASH_ADDR == FSMC_BANK1_3)
+    FSMC_Bank1->BTCR[4U] = NOR_FSMC_BCR;
+    FSMC_Bank1->BTCR[5U] = NOR_FSMC_BTR;
+#elif (MBOOT_NORFLASH_ADDR == FSMC_BANK1_4)
+    FSMC_Bank1->BTCR[6U] = NOR_FSMC_BCR;
+    FSMC_Bank1->BTCR[7U] = NOR_FSMC_BTR;
+#endif
 }
 #endif

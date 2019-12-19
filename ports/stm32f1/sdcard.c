@@ -397,38 +397,6 @@ STATIC mp_obj_t sd_info(mp_obj_t self) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(sd_info_obj, sd_info);
 
-// now obsolete, kept for backwards compatibility
-STATIC mp_obj_t sd_read(mp_obj_t self, mp_obj_t block_num) {
-    uint8_t *dest = m_new(uint8_t, SDCARD_BLOCK_SIZE);
-    mp_uint_t ret = sdcard_read_blocks(dest, mp_obj_get_int(block_num), 1);
-
-    if (ret != 0) {
-        m_del(uint8_t, dest, SDCARD_BLOCK_SIZE);
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_Exception, "sdcard_read_blocks failed [%u]", ret));
-    }
-
-    return mp_obj_new_bytearray_by_ref(SDCARD_BLOCK_SIZE, dest);
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(sd_read_obj, sd_read);
-
-// now obsolete, kept for backwards compatibility
-STATIC mp_obj_t sd_write(mp_obj_t self, mp_obj_t block_num, mp_obj_t data) {
-    mp_buffer_info_t bufinfo;
-    mp_get_buffer_raise(data, &bufinfo, MP_BUFFER_READ);
-    if (bufinfo.len % SDCARD_BLOCK_SIZE != 0) {
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "writes must be a multiple of %d bytes", SDCARD_BLOCK_SIZE));
-    }
-
-    mp_uint_t ret = sdcard_write_blocks(bufinfo.buf, mp_obj_get_int(block_num), bufinfo.len / SDCARD_BLOCK_SIZE);
-
-    if (ret != 0) {
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_Exception, "sdcard_write_blocks failed [%u]", ret));
-    }
-
-    return mp_const_none;
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_3(sd_write_obj, sd_write);
-
 STATIC mp_obj_t pyb_sdcard_readblocks(mp_obj_t self, mp_obj_t block_num, mp_obj_t buf) {
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(buf, &bufinfo, MP_BUFFER_WRITE);
@@ -478,8 +446,6 @@ STATIC const mp_rom_map_elem_t pyb_sdcard_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_present), MP_ROM_PTR(&sd_present_obj) },
     { MP_ROM_QSTR(MP_QSTR_power), MP_ROM_PTR(&sd_power_obj) },
     { MP_ROM_QSTR(MP_QSTR_info), MP_ROM_PTR(&sd_info_obj) },
-    { MP_ROM_QSTR(MP_QSTR_read), MP_ROM_PTR(&sd_read_obj) },
-    { MP_ROM_QSTR(MP_QSTR_write), MP_ROM_PTR(&sd_write_obj) },
     // block device protocol
     { MP_ROM_QSTR(MP_QSTR_readblocks), MP_ROM_PTR(&pyb_sdcard_readblocks_obj) },
     { MP_ROM_QSTR(MP_QSTR_writeblocks), MP_ROM_PTR(&pyb_sdcard_writeblocks_obj) },

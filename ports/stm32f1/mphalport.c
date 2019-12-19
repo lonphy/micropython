@@ -83,10 +83,7 @@ void mp_hal_ticks_cpu_enable(void) {
 }
 
 void mp_hal_gpio_clock_enable(GPIO_TypeDef *gpio) {
-    uint32_t gpio_idx = ((uint32_t)gpio - GPIOA_BASE) / (GPIOB_BASE - GPIOA_BASE);
-    BIT_BAND(RCC->APB2ENR , (RCC_APB2ENR_IOPAEN_Pos + gpio_idx)) = 1;
-    volatile uint32_t tmp = RCC->APB2ENR; // Delay after enabling clock
-    (void)tmp;
+    __NOP(); // nothing todo
 }
 
 #define MP_HAL_PIN_MODE_INVALID    (4)

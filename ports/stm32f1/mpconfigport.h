@@ -33,11 +33,7 @@
 
 // memory allocation policies
 #ifndef MICROPY_GC_STACK_ENTRY_TYPE
-#if MICROPY_HW_SDRAM_SIZE
-#define MICROPY_GC_STACK_ENTRY_TYPE uint32_t
-#else
 #define MICROPY_GC_STACK_ENTRY_TYPE uint16_t
-#endif
 #endif
 #define MICROPY_ALLOC_PATH_MAX      (128)
 
@@ -139,6 +135,9 @@
 #define MICROPY_PY_URE_SUB          (1)
 #define MICROPY_PY_UHEAPQ           (1)
 #define MICROPY_PY_UHASHLIB         (1)
+#define MICROPY_PY_UHASHLIB_MD5     (MICROPY_PY_USSL)
+#define MICROPY_PY_UHASHLIB_SHA1    (MICROPY_PY_USSL)
+#define MICROPY_PY_UCRYPTOLIB       (MICROPY_PY_USSL)
 #define MICROPY_PY_UBINASCII        (1)
 #define MICROPY_PY_URANDOM          (1)
 #define MICROPY_PY_URANDOM_EXTRA_FUNCS (1)

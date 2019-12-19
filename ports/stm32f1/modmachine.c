@@ -71,12 +71,10 @@
 STATIC uint32_t reset_cause;
 
 void machine_init(void) {
-    if (BIT_BAND(PWR->CSR, PWR_CSR_SBF_Pos)) { // 待机模式
+    if (PWR->CSR & PWR_CSR_SBF) {
         reset_cause = PYB_RESET_DEEPSLEEP;
-        // PWR->CR |= PWR_CR_CSBF;   
-        BIT_BAND_SET(PWR->CR, PWR_CR_CSBF_Pos); // 清除待机标识
+        PWR->CR |= PWR_CR_CSBF;
     } else {
-        // 从RCC里获取复位原因
         uint32_t state = RCC->CSR;
         if (state & RCC_CSR_IWDGRSTF || state & RCC_CSR_WWDGRSTF) {
             reset_cause = PYB_RESET_WDT;
@@ -89,9 +87,9 @@ void machine_init(void) {
             reset_cause = PYB_RESET_SOFT;
         }
     }
+
     // clear RCC reset flags
-    // RCC->CSR |= RCC_CSR_RMVF;
-    BIT_BAND_SET(RCC->CSR, RCC_CSR_RMVF_Pos); // 清除待机标识
+    RCC->CSR |= RCC_CSR_RMVF;
 }
 
 void machine_deinit(void) {

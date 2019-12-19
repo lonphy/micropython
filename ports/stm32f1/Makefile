@@ -21,12 +21,10 @@ QSTR_GLOBAL_DEPENDENCIES = mpconfigboard_common.h $(BOARD_DIR)/mpconfigboard.h
 # File containing description of content to be frozen into firmware.
 FROZEN_MANIFEST ?= boards/manifest.py
 
-# directory containing scripts to be frozen as bytecode
-# FROZEN_MPY_DIR ?= modules
-
 # include py core make definitions
 include $(TOP)/py/py.mk
 
+GIT_SUBMODULES = lib/lwip lib/mbedtls lib/mynewt-nimble lib/stm32lib
 CMSIS_MCU_LOWER = $(shell echo $(CMSIS_MCU) | tr '[:upper:]' '[:lower:]')
 
 LD_DIR=boards
@@ -62,7 +60,7 @@ INC += -Ilwip_inc
 CFLAGS_CORTEX_M = -mthumb
 
 # Select hardware floating-point support
-# do nothing
+# CFLAGS_CORTEX_M += -msoft-float
 
 # Options for particular MCU series
 CFLAGS_MCU_f1 = $(CFLAGS_CORTEX_M) -mtune=cortex-m3 -mcpu=cortex-m3
@@ -249,10 +247,12 @@ SRC_C = \
 	flash.c \
 	flashbdev.c \
 	spibdev.c \
+	sram.c \
 	storage.c \
 	sdcard.c \
 	fatfs_port.c \
 	accel.c \
+	lcd.c \
 	servo.c \
 	dac.c \
 	adc.c \
@@ -260,6 +260,7 @@ SRC_C = \
 
 SRC_O = \
 	$(STARTUP_FILE) \
+	$(SYSTEM_FILE) \
 	system_stm32.o \
 	resethandler.o \
 	lib/utils/gchelper_m3.o
@@ -287,12 +288,11 @@ SRC_HAL = $(addprefix $(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_,\
 	hal_uart.c \
 	hal_sd.c \
 	ll_sdmmc.c \
-	ll_fsmc.c \
 	ll_usb.c \
 	hal_can.c \
 	)
 
-$(BUILD)/$(HAL_DIR)/Src/stm32f1xx_ll_usb.o: CFLAGS += -Wno-attributes
+#$(BUILD)/$(HAL_DIR)/Src/stm32f1xx_ll_usb.o: CFLAGS += -Wno-attributes
 
 SRC_USBDEV = $(addprefix $(USBDEV_DIR)/,\
 	core/src/usbd_core.c \
@@ -484,7 +484,6 @@ GEN_PLLFREQTABLE_HDR = $(HEADER_BUILD)/pllfreqtable.h
 GEN_STMCONST_HDR = $(HEADER_BUILD)/modstm_const.h
 GEN_STMCONST_QSTR = $(BUILD)/modstm_qstr.h
 GEN_STMCONST_MPZ = $(HEADER_BUILD)/modstm_mpz.h
-CMSIS_MCU_LOWER = $(shell echo $(CMSIS_MCU) | tr '[:upper:]' '[:lower:]')
 CMSIS_MCU_HDR = $(CMSIS_DIR)/$(CMSIS_MCU_LOWER).h
 
 modmachine.c: $(GEN_PLLFREQTABLE_HDR)

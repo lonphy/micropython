@@ -55,6 +55,7 @@
 #include "usrsw.h"
 #include "usb.h"
 #include "rtc.h"
+#include "sram.h"
 #include "storage.h"
 #include "sdcard.h"
 #include "accel.h"
@@ -238,7 +239,7 @@ STATIC bool init_sdcard_fs(void) {
                 // partition table
                 if (part_num == 2) {
                     vfs->str = "/sd2";
-                } else if (part_num == 2) {
+                } else if (part_num == 3) {
                     vfs->str = "/sd3";
                 } else {
                     vfs->str = "/sd4";
@@ -362,12 +363,19 @@ STATIC uint update_reset_mode(uint reset_mode) {
 #endif
 
 void stm32_main(uint32_t reset_mode) {
+    // Change IRQ vector table if configured differently
+    #if defined(MICROPY_HW_VTOR)
+    SCB->VTOR = MICROPY_HW_VTOR;
+    #endif
+    // Enable 8-byte stack alignment for IRQ handlers, in accord with EABI
+    SCB->CCR |= SCB_CCR_STKALIGN_Msk;
+
     // Check if bootloader should be entered instead of main application
     powerctrl_check_enter_bootloader();
 
     // Set the priority grouping
     NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
-
+    
     // SysTick is needed by HAL_RCC_ClockConfig (called in SystemClock_Config)
     HAL_InitTick(TICK_INT_PRIORITY);
 
@@ -379,18 +387,18 @@ void stm32_main(uint32_t reset_mode) {
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
     #if defined(GPIOD)
-    __HAL_RCC_GPIOD_CLK_ENABLE();
+        __HAL_RCC_GPIOD_CLK_ENABLE();
     #endif
     #if defined(GPIOE)
-    __HAL_RCC_GPIOE_CLK_ENABLE();
+        __HAL_RCC_GPIOE_CLK_ENABLE();
     #endif
     #if defined(GPIOF)
-    __HAL_RCC_GPIOF_CLK_ENABLE();
+        __HAL_RCC_GPIOF_CLK_ENABLE();
     #endif
     #if defined(GPIOG)
-    __HAL_RCC_GPIOG_CLK_ENABLE();
+        __HAL_RCC_GPIOG_CLK_ENABLE();
     #endif
-    
+
     // enable AFIO and config debug
     pin_remap_init0();
 
@@ -399,6 +407,13 @@ void stm32_main(uint32_t reset_mode) {
     #endif
 
     // basic sub-system init
+    #if MICROPY_HW_SRAM_SIZE
+    sram_init();
+    #if MICROPY_HW_SRAM_STARTUP_TEST
+    sram_test(true);
+    #endif
+    #endif
+    
     #if MICROPY_PY_THREAD
     pyb_thread_init(&pyb_thread_main);
     #endif
@@ -441,17 +456,15 @@ void stm32_main(uint32_t reset_mode) {
 
 soft_reset:
 
-    {
-        #if defined(MICROPY_HW_LED2)
-        led_state(1, 0);
-        led_state(2, 1);
-        #else
-        led_state(1, 1);
-        led_state(2, 0);
-        #endif
-        led_state(3, 0);
-        led_state(4, 0);
-    }
+    #if defined(MICROPY_HW_LED2)
+    led_state(1, 0);
+    led_state(2, 1);
+    #else
+    led_state(1, 1);
+    led_state(2, 0);
+    #endif
+    led_state(3, 0);
+    led_state(4, 0);
 
     #if !MICROPY_HW_USES_BOOTLOADER
     // check if user switch held to select the reset mode
@@ -504,11 +517,10 @@ soft_reset:
     #endif
 
     #if MICROPY_HW_ENABLE_USB
-	{// USB detect reset
-		mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_OUT, MP_HAL_PIN_PULL_DOWN, 0);
-		mp_hal_pin_low(pin_A12);
-		mp_hal_delay_ms(200); // pin's state keep low with 200ms
-	}
+	// USB detect reset
+    mp_hal_pin_config(pin_A12, MP_HAL_PIN_MODE_OUT, MP_HAL_PIN_PULL_DOWN, 0);
+    mp_hal_pin_low(pin_A12);
+    mp_hal_delay_ms(200); // pin's state keep low with 200ms
     pyb_usb_init0();
     #endif
     
@@ -583,7 +595,14 @@ soft_reset:
     #if MICROPY_HW_ENABLE_USB
     // init USB device to default setting if it was not already configured
     if (!(pyb_usb_flags & PYB_USB_FLAG_USB_MODE_CALLED)) {
-        pyb_usb_dev_init(USBD_VID, USBD_PID_CDC_MSC, USBD_MODE_CDC_MSC, 0, NULL, NULL);
+        #if MICROPY_HW_USB_MSC
+        const uint16_t pid = USBD_PID_CDC_MSC;
+        const uint8_t mode = USBD_MODE_CDC_MSC;
+        #else
+        const uint16_t pid = USBD_PID_CDC;
+        const uint8_t mode = USBD_MODE_CDC;
+        #endif
+        pyb_usb_dev_init(USBD_VID, pid, mode, 0, NULL, NULL);
     }
     #endif
 
@@ -595,6 +614,10 @@ soft_reset:
     servo_init();
     #endif
     
+    #if MICROPY_PY_NETWORK
+    mod_network_init();
+    #endif
+
     // At this point everything is fully configured and initialised.
 
     // Run the main script from the current directory.
@@ -637,6 +660,11 @@ soft_reset_exit:
     #endif
 
     printf("MPY: soft reboot\n");
+
+    #if MICROPY_PY_NETWORK
+    mod_network_deinit();
+    #endif
+
     timer_deinit();
     uart_deinit_all();
     

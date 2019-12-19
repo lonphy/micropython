@@ -51,17 +51,17 @@
 	#define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE (1)
 #endif
 
-// Whether to enable the RTC, exposed as pyb.RTC
+// Whether to enable the RTC, exposed as machine.RTC
 #ifndef MICROPY_HW_ENABLE_RTC
 	#define MICROPY_HW_ENABLE_RTC (0)
 #endif
 
-// Whether to enable the ADC peripheral, exposed as pyb.ADC and pyb.ADCAll
+// Whether to enable the ADC peripheral, exposed as machine.ADC and machine.ADCAll
 #ifndef MICROPY_HW_ENABLE_ADC
 	#define MICROPY_HW_ENABLE_ADC (1)
 #endif
 
-// Whether to enable the DAC peripheral, exposed as pyb.DAC
+// Whether to enable the DAC peripheral, exposed as machine.DAC
 #ifndef MICROPY_HW_ENABLE_DAC
 	#define MICROPY_HW_ENABLE_DAC (0)
 #endif
@@ -81,12 +81,12 @@
 	#define MICROPY_HW_HAS_SWITCH (0)
 #endif
 
-// Whether to expose internal flash storage as pyb.Flash
+// Whether to expose internal flash storage as machine.Flash
 #ifndef MICROPY_HW_HAS_FLASH
 	#define MICROPY_HW_HAS_FLASH (0)
 #endif
 
-// Whether to enable the SD card interface, exposed as pyb.SDCard
+// Whether to enable the SD card interface, exposed as machine.SDCard
 #ifndef MICROPY_HW_ENABLE_SDCARD
 	#define MICROPY_HW_ENABLE_SDCARD (0)
 #endif

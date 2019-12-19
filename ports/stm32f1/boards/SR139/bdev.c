@@ -1,10 +1,10 @@
 #include "storage.h"
 
 // External SPI flash uses standard SPI interface
-#if 1
+#ifdef MICROPY_HW_SPIFLASH_CS
 STATIC const mp_soft_spi_obj_t soft_spi_bus = {
-    .delay_half = MICROPY_HW_SOFTSPI_MIN_DELAY, /* MICROPY_HW_SOFTSPI_MIN_DELAY */
-    .polarity = 1,
+    .delay_half = MICROPY_HW_SOFTSPI_MIN_DELAY,
+    .polarity = 0,
     .phase = 0,
     .sck = MICROPY_HW_SPIFLASH_SCK,
     .mosi = MICROPY_HW_SPIFLASH_MOSI,

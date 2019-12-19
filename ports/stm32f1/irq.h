@@ -100,7 +100,7 @@ MP_DECLARE_CONST_FUN_OBJ_0(pyb_irq_stats_obj);
 // The following interrupts are arranged from highest priority to lowest
 // priority to make it a bit easier to figure out.
 
-//#def  IRQ_PRI_SYSTICK         NVIC_EncodePriority(NVIC_PRIORITYGROUP_4, 0, 0)
+#define  IRQ_PRI_SYSTICK         NVIC_EncodePriority(NVIC_PRIORITYGROUP_4, 0, 0)
 
 // The UARTs have no FIFOs, so if they don't get serviced quickly then characters
 // get dropped. The handling for each character only consumes about 0.5 usec

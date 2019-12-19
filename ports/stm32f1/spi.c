@@ -203,6 +203,11 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
         if (pins[i] == NULL) {
             continue;
         }
+        
+        // In STM32F1xx, For alternate function inputs,
+		// the port must be configured in Input mode (floating, pull-up or pull-down)
+		// see RM0008.PDF#9.1.4 and #9.1.11 Table.25
+		mode = (i == 2 ? MP_HAL_PIN_MODE_IN : MP_HAL_PIN_MODE_ALT);
         mp_hal_pin_config_alt(pins[i], mode, pull, AF_FN_SPI, (self - &spi_obj[0]) + 1);
     }
 
@@ -234,6 +239,7 @@ void spi_deinit(const spi_t *spi_obj) {
         __HAL_RCC_SPI1_RELEASE_RESET();
         __HAL_RCC_SPI1_CLK_DISABLE();
         HAL_NVIC_DisableIRQ(SPI1_IRQn);
+    }
     #endif
 
     #if defined(MICROPY_HW_SPI2_SCK)

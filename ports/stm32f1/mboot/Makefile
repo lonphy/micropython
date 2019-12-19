@@ -16,6 +16,7 @@ endif
 include ../../../py/mkenv.mk
 include $(BOARD_DIR)/mpconfigboard.mk
 
+CMSIS_MCU_LOWER = $(shell echo $(CMSIS_MCU) | tr '[:upper:]' '[:lower:]')
 CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32F1xx/Include
 HAL_DIR=lib/stm32lib/STM32F1xx_HAL_Driver
 USBDEV_DIR=usbdev
@@ -88,7 +89,7 @@ SRC_C = \
 	$(wildcard $(BOARD_DIR)/*.c)
 
 SRC_O = \
-	ports/stm32f1/$(STARTUP_FILE) \
+	$(STARTUP_FILE) \
 	ports/stm32f1/resethandler.o \
 
 $(BUILD)/$(HAL_DIR)/Src/stm32f1xx_ll_usb.o: CFLAGS += -Wno-attributes

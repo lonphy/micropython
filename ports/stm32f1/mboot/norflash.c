@@ -29,6 +29,7 @@
 #include "py/mphal.h"
 #include "norflash.h"
 
+#ifdef MBOOT_NORFLASH_ADDR
 /* control register, [ASYNCWAIT(b1), WREN(b1), FACCEN(b1) MWID(b01), MTYP(b10), MBKEN(b1)] */
 #define NOR_FSMC_BCR (0x000090D9U)
 
@@ -294,3 +295,5 @@ uint8_t mp_norflash_get_status(uint32_t addr, uint32_t timeout) {
     /* Return the operation status */
     return status;
 }
+
+#endif

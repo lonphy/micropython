@@ -5,12 +5,11 @@
 /* Specify the memory areas */
 MEMORY
 {
-    FLASH (rx)      : ORIGIN = 0x64000000, LENGTH = 16M  /* entire flash, 8M-16bit */
-    FLASH_ISR (rx)  : ORIGIN = 0x64000000, LENGTH = 16K  /* 16K ISR */
-    FLASH_FS (rx)   : ORIGIN = 0x64004000, LENGTH = 112K /* 112k fs */
-    FLASH_TEXT (rx) : ORIGIN = 0x64000000, LENGTH = 16M  /* ext NorFlash S29GL128P */
+    FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 1M  /* entire flash, 1M*/
+    FLASH_ISR (rx)  : ORIGIN = 0x08000000, LENGTH = 16K  /* 16K ISR */
+    FLASH_FS (rx)   : ORIGIN = 0x08004000, LENGTH = 112K /* 112k fs */
+    FLASH_TEXT (rx) : ORIGIN = 0x08020000, LENGTH = 800K
     RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 96K
-    RAM_APP(xrw)    : ORIGIN = 0x68000000, LENGTH = 1M  /* ext SRAM IS62WV51216 */
 }
 
 /* produce a link error if there is not this amount of RAM for these sections */
