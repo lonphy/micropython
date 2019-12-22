@@ -759,6 +759,8 @@ STATIC const uint32_t tim_instance_table[MICROPY_HW_MAX_TIMER] = {
     TIM_ENTRY(1, TIM1_BRK_UP_TRG_COM_IRQn),
     #elif defined(STM32F4) || defined(STM32F7)
     TIM_ENTRY(1, TIM1_UP_TIM10_IRQn),
+    #elif defined(STM32H7)
+    TIM_ENTRY(1, TIM1_UP_IRQn),
     #elif defined(STM32L4)
     TIM_ENTRY(1, TIM1_UP_TIM16_IRQn),
     #endif
@@ -780,7 +782,7 @@ STATIC const uint32_t tim_instance_table[MICROPY_HW_MAX_TIMER] = {
     TIM_ENTRY(7, TIM7_IRQn),
     #endif
     #if defined(TIM8)
-    #if defined(STM32F4) || defined(STM32F7)
+    #if defined(STM32F4) || defined(STM32F7) || defined(STM32H7)
     TIM_ENTRY(8, TIM8_UP_TIM13_IRQn),
     #elif defined(STM32L4)
     TIM_ENTRY(8, TIM8_UP_IRQn),
@@ -1269,15 +1271,21 @@ STATIC mp_obj_t pyb_timer_freq(size_t n_args, const mp_obj_t *args) {
         uint32_t prescaler = self->tim.Instance->PSC & 0xffff;
         uint32_t period = __HAL_TIM_GET_AUTORELOAD(&self->tim) & TIMER_CNT_MASK(self);
         uint32_t source_freq = timer_get_source_freq(self->tim_id);
-        uint32_t divide = ((prescaler + 1) * (period + 1));
+        uint32_t divide_a = prescaler + 1;
+        uint32_t divide_b = period + 1;
         #if MICROPY_PY_BUILTINS_FLOAT
-        if (source_freq % divide != 0) {
-            return mp_obj_new_float((float)source_freq / (float)divide);
-        } else
-        #endif
-        {
-            return mp_obj_new_int(source_freq / divide);
+        if (source_freq % divide_a != 0) {
+            return mp_obj_new_float((mp_float_t)source_freq / (mp_float_t)divide_a / (mp_float_t)divide_b);
         }
+        source_freq /= divide_a;
+        if (source_freq % divide_b != 0) {
+            return mp_obj_new_float((mp_float_t)source_freq / (mp_float_t)divide_b);
+        } else {
+            return mp_obj_new_int(source_freq / divide_b);
+        }
+        #else
+        return mp_obj_new_int(source_freq / divide_a / divide_b);
+        #endif
     } else {
         // set
         uint32_t period;

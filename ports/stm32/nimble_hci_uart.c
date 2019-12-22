@@ -26,16 +26,60 @@
 
 #include "py/runtime.h"
 #include "py/mphal.h"
-#include "uart.h"
-#include "pendsv.h"
-#include "drivers/cyw43/cywbt.h"
+#include "extmod/nimble/nimble/hci_uart.h"
 
 #if MICROPY_BLUETOOTH_NIMBLE
 
+#if defined(STM32WB)
+
 /******************************************************************************/
-// UART
+// HCI over IPCC
+
+#include "rfcore.h"
+
+int nimble_hci_uart_configure(uint32_t port) {
+    (void)port;
+    return 0;
+}
+
+int nimble_hci_uart_set_baudrate(uint32_t baudrate) {
+    (void)baudrate;
+    return 0;
+}
+
+int nimble_hci_uart_activate(void) {
+    rfcore_ble_init();
+    return 0;
+}
+
+void nimble_hci_uart_rx(hal_uart_rx_cb_t rx_cb, void *rx_arg) {
+    // Protect in case it's called from ble_npl_sem_pend at thread-level
+    MICROPY_PY_LWIP_ENTER
+    rfcore_ble_check_msg(rx_cb, rx_arg);
+    MICROPY_PY_LWIP_EXIT
+}
+
+void nimble_hci_uart_tx_strn(const char *str, uint len) {
+    MICROPY_PY_LWIP_ENTER
+    rfcore_ble_hci_cmd(len, (const uint8_t*)str);
+    MICROPY_PY_LWIP_EXIT
+}
+
+#else
+
+/******************************************************************************/
+// HCI over UART
+
+#include "pendsv.h"
+#include "uart.h"
+#include "drivers/cyw43/cywbt.h"
+
 pyb_uart_obj_t bt_hci_uart_obj;
 static uint8_t hci_uart_rxbuf[512];
+
+#ifdef pyb_pin_BT_DEV_WAKE
+static uint32_t bt_sleep_ticks;
+#endif
 
 extern void nimble_poll(void);
 
@@ -81,16 +125,52 @@ int nimble_hci_uart_activate(void) {
     return 0;
 }
 
-mp_uint_t nimble_hci_uart_rx_any() {
-    return uart_rx_any(&bt_hci_uart_obj);
-}
+void nimble_hci_uart_rx(hal_uart_rx_cb_t rx_cb, void *rx_arg) {
+    #ifdef pyb_pin_BT_HOST_WAKE
+    int host_wake = 0;
+    host_wake = mp_hal_pin_read(pyb_pin_BT_HOST_WAKE);
+    /*
+    // this is just for info/tracing purposes
+    static int last_host_wake = 0;
+    if (host_wake != last_host_wake) {
+        printf("HOST_WAKE change %d -> %d\n", last_host_wake, host_wake);
+        last_host_wake = host_wake;
+    }
+    */
+    #endif
 
-int nimble_hci_uart_rx_char() {
-    return uart_rx_char(&bt_hci_uart_obj);
+    while (uart_rx_any(&bt_hci_uart_obj)) {
+        uint8_t data = uart_rx_char(&bt_hci_uart_obj);
+        //printf("UART RX: %02x\n", data);
+        rx_cb(rx_arg, data);
+    }
+
+    #ifdef pyb_pin_BT_DEV_WAKE
+    if (host_wake == 1 && mp_hal_pin_read(pyb_pin_BT_DEV_WAKE) == 0) {
+        if (mp_hal_ticks_ms() - bt_sleep_ticks > 500) {
+            //printf("BT SLEEP\n");
+            mp_hal_pin_high(pyb_pin_BT_DEV_WAKE); // let sleep
+        }
+    }
+    #endif
 }
 
 void nimble_hci_uart_tx_strn(const char *str, uint len) {
+    #ifdef pyb_pin_BT_DEV_WAKE
+    bt_sleep_ticks = mp_hal_ticks_ms();
+
+    if (mp_hal_pin_read(pyb_pin_BT_DEV_WAKE) == 1) {
+        //printf("BT WAKE for TX\n");
+        mp_hal_pin_low(pyb_pin_BT_DEV_WAKE); // wake up
+        // Use delay_us rather than delay_ms to prevent running the scheduler (which
+        // might result in more BLE operations).
+        mp_hal_delay_us(5000); // can't go lower than this
+    }
+    #endif
+
     uart_tx_strn(&bt_hci_uart_obj, str, len);
 }
+
+#endif // defined(STM32WB)
 
 #endif // MICROPY_BLUETOOTH_NIMBLE

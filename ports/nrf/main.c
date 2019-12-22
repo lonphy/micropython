@@ -180,7 +180,7 @@ pin_init0();
         }
         vfs->str = "/sd";
         vfs->len = 3;
-        vfs->flags = FSUSER_FREE_OBJ;
+        vfs->flags = MP_BLOCKDEV_FLAG_FREE_OBJ;
         sdcard_init_vfs(vfs);
 
         // put the sd device in slot 1 (it will be unused at this point)
@@ -230,7 +230,7 @@ pin_init0();
 
 led_state(1, 0);
 
-#if MICROPY_VFS || MICROPY_MBFS
+#if MICROPY_VFS || MICROPY_MBFS || MICROPY_MODULE_FROZEN
     // run boot.py and main.py if they exist.
     pyexec_file_if_exists("boot.py");
     pyexec_file_if_exists("main.py");

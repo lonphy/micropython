@@ -12,6 +12,9 @@ roles concurrently.
 This API is intended to match the low-level Bluetooth protocol and provide
 building-blocks for higher-level abstractions such as specific device types.
 
+.. note:: This module is still under development and its classes, functions,
+          methods and constants are subject to change.
+
 class BLE
 ---------
 
@@ -32,13 +35,26 @@ Configuration
 
     The radio must be made active before using any other methods on this class.
 
-.. method:: BLE.config(name)
+.. method:: BLE.config('param')
+            BLE.config(param=value, ...)
 
-    Queries a configuration value by *name*. Currently supported values are:
+    Get or set configuration values of the BLE interface.  To get a value the
+    parameter name should be quoted as a string, and just one parameter is
+    queried at a time.  To set values use the keyword syntax, and one ore more
+    parameter can be set at a time.
+
+    Currently supported values are:
 
     - ``'mac'``: Returns the device MAC address. If a device has a fixed address
       (e.g. PYBD) then it will be returned. Otherwise (e.g. ESP32) a random
       address will be generated when the BLE interface is made active.
+
+    - ``'rxbuf'``: Set the size in bytes of the internal buffer used to store
+      incoming events.  This buffer is global to the entire BLE driver and so
+      handles incoming data for all events, including all characteristics.
+      Increasing this allows better handling of bursty incoming data (for
+      example scan results) and the ability for a central role to receive
+      larger characteristic values.
 
 Event Handling
 --------------
@@ -51,6 +67,12 @@ Event Handling
 
     The optional *trigger* parameter allows you to set a mask of events that
     your program is interested in. The default is all events.
+
+    Note: the ``addr``, ``adv_data`` and ``uuid`` entries in the tuples are
+    references to data managed by the :mod:`ubluetooth` module (i.e. the same
+    instance will be re-used across multiple calls to the event handler). If
+    your program wants to use this data outside of the handler, then it must
+    copy them first, e.g. by using ``bytes(addr)`` or ``bluetooth.UUID(uuid)``.
 
     An event handler showing all possible events::
 
@@ -203,8 +225,8 @@ writes from a central to a given characteristic, use
     value.
 
     The **flags** are a bitwise-OR combination of the
-    :data:`ubluetooth.FLAGS_READ`, :data:`bluetooth.FLAGS_WRITE` and
-    :data:`ubluetooth.FLAGS_NOTIFY` values defined below.
+    :data:`ubluetooth.FLAG_READ`, :data:`ubluetooth.FLAG_WRITE` and
+    :data:`ubluetooth.FLAG_NOTIFY` values defined below.
 
     The return value is a list (one element per service) of tuples (each element
     is a value handle). Characteristics and descriptor handles are flattened
@@ -245,6 +267,17 @@ writes from a central to a given characteristic, use
     If *data* is specified, then the that value is sent to the central as part
     of the notification, avoiding the need for a separate read request. Note
     that this will not update the local value stored.
+
+.. method:: BLE.gatts_set_buffer(value_handle, len, append=False)
+
+    Sets the internal buffer size for a value in bytes. This will limit the
+    largest possible write that can be received. The default is 20.
+
+    Setting *append* to ``True`` will make all remote writes append to, rather
+    than replace, the current value. At most *len* bytes can be buffered in
+    this way. When you use :meth:`gatts_read <BLE.gatts_read>`, the value will
+    be cleared after reading. This feature is useful when implementing something
+    like the Nordic UART Service.
 
 
 Central Role (GATT Client)
@@ -293,12 +326,23 @@ Central Role (GATT Client)
 
     On success, the ``_IRQ_GATTC_READ_RESULT`` event will be raised.
 
-.. method:: BLE.gattc_write(conn_handle, value_handle, data)
+.. method:: BLE.gattc_write(conn_handle, value_handle, data, mode=0)
 
     Issue a remote write to a connected peripheral for the specified
     characteristic or descriptor handle.
 
-    On success, the ``_IRQ_GATTC_WRITE_STATUS`` event will be raised.
+    The argument *mode* specifies the write behaviour, with the currently
+    supported values being:
+
+        * ``mode=0`` (default) is a write-without-response: the write will
+          be sent to the remote peripheral but no confirmation will be
+          returned, and no event will be raised.
+        * ``mode=1`` is a write-with-response: the remote peripheral is
+          requested to send a response/acknowledgement that it received the
+          data.
+
+    If a response is received from the remote peripheral the
+    ``_IRQ_GATTC_WRITE_STATUS`` event will be raised.
 
 
 class UUID

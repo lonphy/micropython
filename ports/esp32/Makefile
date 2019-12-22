@@ -29,8 +29,9 @@ QSTR_GLOBAL_REQUIREMENTS = $(SDKCONFIG_H)
 
 MICROPY_PY_USSL = 0
 MICROPY_SSL_AXTLS = 0
-MICROPY_FATFS = 1
 MICROPY_PY_BTREE = 1
+MICROPY_VFS_FAT = 1
+MICROPY_VFS_LFS2 = 1
 
 FROZEN_MANIFEST ?= boards/manifest.py
 
@@ -275,6 +276,9 @@ COPT += -Os -DNDEBUG
 #LDFLAGS += --gc-sections
 endif
 
+# Options for mpy-cross
+MPY_CROSS_FLAGS += -march=xtensawin
+
 # Enable SPIRAM support if CONFIG_ESP32_SPIRAM_SUPPORT=y in sdkconfig
 ifeq ($(CONFIG_ESP32_SPIRAM_SUPPORT),y)
 CFLAGS_COMMON += -mfix-esp32-psram-cache-issue
@@ -319,6 +323,7 @@ SRC_C = \
 	modsocket.c \
 	modesp.c \
 	esp32_partition.c \
+	esp32_rmt.c \
 	esp32_ulp.c \
 	modesp32.c \
 	espneopixel.c \
@@ -343,12 +348,6 @@ LIB_SRC_C = $(addprefix lib/,\
 	utils/interrupt_char.c \
 	utils/sys_stdio_mphal.c \
 	)
-
-ifeq ($(MICROPY_FATFS), 1)
-LIB_SRC_C += \
-	lib/oofatfs/ff.c \
-	lib/oofatfs/ffunicode.c
-endif
 
 DRIVERS_SRC_C = $(addprefix drivers/,\
 	bus/softspi.c \

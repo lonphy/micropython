@@ -84,9 +84,6 @@
 #define MICROPY_ENABLE_SCHEDULER    (1)
 #define MICROPY_SCHEDULER_DEPTH     (8)
 #define MICROPY_VFS                 (1)
-#ifndef MICROPY_VFS_FAT
-#define MICROPY_VFS_FAT             (1)
-#endif
 
 // control over Python builtins
 #define MICROPY_PY_FUNCTION_ATTRS   (1)
@@ -282,6 +279,8 @@ struct _mp_bluetooth_nimble_root_pointers_t;
     \
     mp_obj_t pyb_extint_callback[PYB_EXTI_NUM_VECTORS]; \
     \
+    struct _soft_timer_entry_t *soft_timer_head; \
+    \
     /* pointers to all Timer objects (if they have been created) */ \
     struct _pyb_timer_obj_t *pyb_timer_obj_all[MICROPY_HW_MAX_TIMER]; \
     \
@@ -366,6 +365,10 @@ static inline mp_uint_t disable_irq(void) {
 #define MICROPY_PY_LWIP_ENTER   uint32_t irq_state = raise_irq_pri(IRQ_PRI_PENDSV);
 #define MICROPY_PY_LWIP_REENTER irq_state = raise_irq_pri(IRQ_PRI_PENDSV);
 #define MICROPY_PY_LWIP_EXIT    restore_irq_pri(irq_state);
+
+// Bluetooth calls must run at a raised IRQ priority
+#define MICROPY_PY_BLUETOOTH_ENTER MICROPY_PY_LWIP_ENTER
+#define MICROPY_PY_BLUETOOTH_EXIT MICROPY_PY_LWIP_EXIT
 
 // We need an implementation of the log2 function which is not a macro
 #define MP_NEED_LOG2 (1)
