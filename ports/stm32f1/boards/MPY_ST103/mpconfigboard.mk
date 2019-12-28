@@ -11,5 +11,3 @@ TEXT0_ADDR = 0x08020000
 else
 LD_FILES = boards/MPY_ST103/mpy_st103.ld boards/common_basic.ld
 endif
-
-# DEBUG = 1

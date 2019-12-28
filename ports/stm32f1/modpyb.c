@@ -33,6 +33,7 @@
 #include "drivers/dht/dht.h"
 #include "stm32_it.h"
 #include "irq.h"
+#include "lcd.h"
 #include "led.h"
 #include "usrsw.h"
 #include "storage.h"
@@ -103,17 +104,16 @@ STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
 
     #if MICROPY_HW_ENABLE_USB
     { MP_ROM_QSTR(MP_QSTR_usb_mode),       MP_ROM_PTR(&pyb_usb_mode_obj) },
+    #if MICROPY_HW_USB_HID
     { MP_ROM_QSTR(MP_QSTR_hid_mouse),      MP_ROM_PTR(&pyb_usb_hid_mouse_obj) },
     { MP_ROM_QSTR(MP_QSTR_hid_keyboard),   MP_ROM_PTR(&pyb_usb_hid_keyboard_obj) },
-    { MP_ROM_QSTR(MP_QSTR_USB_VCP),        MP_ROM_PTR(&pyb_usb_vcp_type) },
     { MP_ROM_QSTR(MP_QSTR_USB_HID),        MP_ROM_PTR(&pyb_usb_hid_type) },
+    #endif
+    { MP_ROM_QSTR(MP_QSTR_USB_VCP),        MP_ROM_PTR(&pyb_usb_vcp_type) },
     #endif
 
     { MP_ROM_QSTR(MP_QSTR_elapsed_millis), MP_ROM_PTR(&pyb_elapsed_millis_obj) },
     { MP_ROM_QSTR(MP_QSTR_elapsed_micros), MP_ROM_PTR(&pyb_elapsed_micros_obj) },
-
-    // This function is not intended to be public and may be moved elsewhere
-    { MP_ROM_QSTR(MP_QSTR_dht_readinto), MP_ROM_PTR(&dht_readinto_obj) },
 
     #if MICROPY_HW_ENABLE_SERVO
     { MP_ROM_QSTR(MP_QSTR_pwm), MP_ROM_PTR(&pyb_pwm_set_obj) },
@@ -131,6 +131,10 @@ STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
 
     #if MICROPY_HW_HAS_MMA7660
     { MP_ROM_QSTR(MP_QSTR_Accel), MP_ROM_PTR(&pyb_accel_type) },
+    #endif
+
+    #if MICROPY_HW_HAS_LCD
+    { MP_ROM_QSTR(MP_QSTR_LCD), MP_ROM_PTR(&pyb_lcd_type) },
     #endif
 };
 

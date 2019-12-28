@@ -12,6 +12,8 @@
 #define MICROPY_HW_USB_FS           (1)
 #define MICROPY_HW_ENABLE_ADC       (1)
 #define MICROPY_HW_ENABLE_DAC       (1)
+#define MICROPY_HW_HAS_LCD          (1)
+#define MICROPY_HW_ENABLE_SRAM      (1)
 
 // HSE is 8MHz
 #define MICROPY_HW_CLK_USE_HSE      (1)
@@ -104,6 +106,7 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_high(pin))
 
 // SRAM
+#if MICROPY_HW_ENABLE_SRAM
 #define MICROPY_HW_SRAM_SIZE                (8 / 8 * 1024 * 1024)  // 8 Mbit
 #define MICROPY_HW_SRAM_STARTUP_TEST        (1)
 #define MICROPY_HEAP_START                  sram_start()
@@ -113,3 +116,13 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_SRAM_TIMING_ADDSET       (0)
 #define MICROPY_HW_SRAM_TIMING_ADDHLD       (0)
 #define MICROPY_HW_SRAM_TIMING_DATAST       (2)
+#endif
+
+// LCD
+#if MICROPY_HW_HAS_LCD
+#define MICROPY_HW_LCD_EN                   (pin_A1)
+#define MICROPY_HW_LCD_BANK                 (FSMC_BANK1_4)
+#define MICROPY_HW_LCD_DATA_BITS            (16)
+#define MICROPY_HW_LCD_FMSC_ADDRn           (0)
+#define MICROPY_HW_LCD_FMSC_ADDR_PIN        (pin_F0) // FMSC_A0
+#endif

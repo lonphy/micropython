@@ -61,12 +61,11 @@
 #include "adc.h"
 #include "dac.h"
 
-// 复位来源定义
-#define PYB_RESET_SOFT      (0) // 软件复位
-#define PYB_RESET_POWER_ON  (1) // 上电/掉电复位
-#define PYB_RESET_HARD      (2) // 通过复位引脚NRST复位
-#define PYB_RESET_WDT       (3) // 看门狗复位
-#define PYB_RESET_DEEPSLEEP (4) // 待机模式复位
+#define PYB_RESET_SOFT      (0)
+#define PYB_RESET_POWER_ON  (1)
+#define PYB_RESET_HARD      (2)
+#define PYB_RESET_WDT       (3)
+#define PYB_RESET_DEEPSLEEP (4)
 
 STATIC uint32_t reset_cause;
 
@@ -75,6 +74,7 @@ void machine_init(void) {
         reset_cause = PYB_RESET_DEEPSLEEP;
         PWR->CR |= PWR_CR_CSBF;
     } else {
+        // get reset cause from RCC flags
         uint32_t state = RCC->CSR;
         if (state & RCC_CSR_IWDGRSTF || state & RCC_CSR_WWDGRSTF) {
             reset_cause = PYB_RESET_WDT;

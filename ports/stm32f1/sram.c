@@ -45,7 +45,7 @@
 #define MEM_SIZE_64M   ((256U << 8U) * MEM_1K)
 
 
-#define SRAM_FSMC_BCR  (0x00001091U) /* control register, [ WREN=1, MWID=16bit, MBKEN=1]*/
+#define SRAM_FSMC_BCR  (0x00001011U) /* control register, [ WREN=1, MWID=16bit, MBKEN=1]*/
 #define SRAM_FSMC_BTR  (((MICROPY_HW_SRAM_TIMING_DATAST & 0xffU) << 8U) | \
                         ((MICROPY_HW_SRAM_TIMING_ADDHLD & 0x0fU) << 4U) | \
                         ((MICROPY_HW_SRAM_TIMING_ADDSET & 0x0fU) << 0U) ) /* timing register, [DATAST, ADDHLD, ADDSET] */
