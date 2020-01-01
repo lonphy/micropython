@@ -121,8 +121,6 @@ soft_reset:
     mp_obj_list_append(mp_sys_path, MP_OBJ_NEW_QSTR(MP_QSTR_)); // current dir (or base dir of the script)
     mp_obj_list_init(mp_sys_argv, 0);
 
-    pyb_set_repl_info(MP_OBJ_NEW_SMALL_INT(0));
-
     readline_init0();
 
 
@@ -180,7 +178,7 @@ pin_init0();
         }
         vfs->str = "/sd";
         vfs->len = 3;
-        vfs->flags = FSUSER_FREE_OBJ;
+        vfs->flags = MP_BLOCKDEV_FLAG_FREE_OBJ;
         sdcard_init_vfs(vfs);
 
         // put the sd device in slot 1 (it will be unused at this point)
@@ -230,7 +228,7 @@ pin_init0();
 
 led_state(1, 0);
 
-#if MICROPY_VFS || MICROPY_MBFS
+#if MICROPY_VFS || MICROPY_MBFS || MICROPY_MODULE_FROZEN
     // run boot.py and main.py if they exist.
     pyexec_file_if_exists("boot.py");
     pyexec_file_if_exists("main.py");

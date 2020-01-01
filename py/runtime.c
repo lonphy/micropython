@@ -34,6 +34,7 @@
 #include "py/objstr.h"
 #include "py/objtuple.h"
 #include "py/objlist.h"
+#include "py/objtype.h"
 #include "py/objmodule.h"
 #include "py/objgenerator.h"
 #include "py/smallint.h"
@@ -570,16 +571,17 @@ generic_binary_op:
     }
 
 #if MICROPY_PY_REVERSE_SPECIAL_METHODS
-    if (op >= MP_BINARY_OP_OR && op <= MP_BINARY_OP_REVERSE_POWER) {
+    if (op >= MP_BINARY_OP_OR && op <= MP_BINARY_OP_POWER) {
         mp_obj_t t = rhs;
         rhs = lhs;
         lhs = t;
-        if (op <= MP_BINARY_OP_POWER) {
-            op += MP_BINARY_OP_REVERSE_OR - MP_BINARY_OP_OR;
-            goto generic_binary_op;
-        }
-
+        op += MP_BINARY_OP_REVERSE_OR - MP_BINARY_OP_OR;
+        goto generic_binary_op;
+    } else if (op >= MP_BINARY_OP_REVERSE_OR) {
         // Convert __rop__ back to __op__ for error message
+        mp_obj_t t = rhs;
+        rhs = lhs;
+        lhs = t;
         op -= MP_BINARY_OP_REVERSE_OR - MP_BINARY_OP_OR;
     }
 #endif
@@ -1037,9 +1039,11 @@ void mp_convert_member_lookup(mp_obj_t self, const mp_obj_type_t *type, mp_obj_t
                 || m_type == &mp_type_fun_builtin_1
                 || m_type == &mp_type_fun_builtin_2
                 || m_type == &mp_type_fun_builtin_3
-                || m_type == &mp_type_fun_builtin_var)) {
+                || m_type == &mp_type_fun_builtin_var)
+            && type != &mp_type_object) {
             // we extracted a builtin method without a first argument, so we must
             // wrap this function in a type checker
+            // Note that object will do its own checking so shouldn't be wrapped.
             dest[0] = mp_obj_new_checked_fun(type, member);
         } else
         #endif
@@ -1162,13 +1166,13 @@ mp_obj_t mp_getiter(mp_obj_t o_in, mp_obj_iter_buf_t *iter_buf) {
         return o_in;
     }
 
-    // if caller did not provide a buffer then allocate one on the heap
-    if (iter_buf == NULL) {
-        iter_buf = m_new_obj(mp_obj_iter_buf_t);
-    }
-
     // check for native getiter (corresponds to __iter__)
     if (type->getiter != NULL) {
+        if (iter_buf == NULL && type->getiter != mp_obj_instance_getiter) {
+            // if caller did not provide a buffer then allocate one on the heap
+            // mp_obj_instance_getiter is special, it will allocate only if needed
+            iter_buf = m_new_obj(mp_obj_iter_buf_t);
+        }
         mp_obj_t iter = type->getiter(o_in, iter_buf);
         if (iter != MP_OBJ_NULL) {
             return iter;
@@ -1180,6 +1184,10 @@ mp_obj_t mp_getiter(mp_obj_t o_in, mp_obj_iter_buf_t *iter_buf) {
     mp_load_method_maybe(o_in, MP_QSTR___getitem__, dest);
     if (dest[0] != MP_OBJ_NULL) {
         // __getitem__ exists, create and return an iterator
+        if (iter_buf == NULL) {
+            // if caller did not provide a buffer then allocate one on the heap
+            iter_buf = m_new_obj(mp_obj_iter_buf_t);
+        }
         return mp_obj_new_getitem_iter(dest, iter_buf);
     }
 

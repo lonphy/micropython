@@ -185,12 +185,14 @@ PY_EXTMOD_O_BASENAME = \
 	extmod/modwebrepl.o \
 	extmod/modframebuf.o \
 	extmod/vfs.o \
+	extmod/vfs_blockdev.o \
 	extmod/vfs_reader.o \
 	extmod/vfs_posix.o \
 	extmod/vfs_posix_file.o \
 	extmod/vfs_fat.o \
 	extmod/vfs_fat_diskio.o \
 	extmod/vfs_fat_file.o \
+	extmod/vfs_lfs.o \
 	extmod/utime_mphal.o \
 	extmod/uos_dupterm.o \
 	lib/embed/abort_.o \

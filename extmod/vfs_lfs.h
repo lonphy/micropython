@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2018-2019 Damien P. George
+ * Copyright (c) 2019 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,22 +23,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#ifndef MICROPY_INCLUDED_EXTMOD_VFS_LFS_H
+#define MICROPY_INCLUDED_EXTMOD_VFS_LFS_H
 
-#include "py/runtime.h"
+#include "py/obj.h"
 
-#if MICROPY_BLUETOOTH_NIMBLE
+extern const mp_obj_type_t mp_type_vfs_lfs1;
+extern const mp_obj_type_t mp_type_vfs_lfs1_fileio;
+extern const mp_obj_type_t mp_type_vfs_lfs1_textio;
 
-/******************************************************************************/
-// Misc functions needed by Nimble
+extern const mp_obj_type_t mp_type_vfs_lfs2;
+extern const mp_obj_type_t mp_type_vfs_lfs2_fileio;
+extern const mp_obj_type_t mp_type_vfs_lfs2_textio;
 
-#include <stdarg.h>
-
-int nimble_sprintf(char *str, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    int ret = vsnprintf(str, 65535, fmt, ap);
-    va_end(ap);
-    return ret;
-}
-
-#endif
+#endif // MICROPY_INCLUDED_EXTMOD_VFS_LFS_H

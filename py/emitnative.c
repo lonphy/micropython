@@ -47,7 +47,7 @@
 #include <assert.h>
 
 #include "py/emit.h"
-#include "py/bc.h"
+#include "py/nativeglue.h"
 #include "py/objstr.h"
 
 #if MICROPY_DEBUG_VERBOSE // print debugging info
@@ -687,7 +687,7 @@ STATIC void emit_native_end_pass(emit_t *emit) {
         #if !MICROPY_DYNAMIC_COMPILER
         // Store mp_fun_table pointer just after qstrs
         // (but in dynamic-compiler mode eliminate dependency on mp_fun_table)
-        emit->const_table[nqstr] = (mp_uint_t)(uintptr_t)mp_fun_table;
+        emit->const_table[nqstr] = (mp_uint_t)(uintptr_t)&mp_fun_table;
         #endif
 
         #if MICROPY_PERSISTENT_CODE_SAVE
@@ -2696,7 +2696,7 @@ STATIC void emit_native_return_value(emit_t *emit) {
         }
         if (return_vtype != VTYPE_PYOBJ) {
             emit_call_with_imm_arg(emit, MP_F_CONVERT_NATIVE_TO_OBJ, return_vtype, REG_ARG_2);
-            #if REG_RET != REG_PARENT_ARG_RET
+            #if REG_RET != REG_PARENT_RET
             ASM_MOV_REG_REG(emit->as, REG_PARENT_RET, REG_RET);
             #endif
         }

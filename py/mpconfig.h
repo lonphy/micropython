@@ -28,7 +28,7 @@
 
 // Current version of MicroPython
 #define MICROPY_VERSION_MAJOR 1
-#define MICROPY_VERSION_MINOR 11
+#define MICROPY_VERSION_MINOR 12
 #define MICROPY_VERSION_MICRO 0
 
 // Combined version as a 32-bit number for convenience
@@ -560,6 +560,11 @@
 #define MICROPY_HELPER_REPL (0)
 #endif
 
+// Allow enabling debug prints after each REPL line
+#ifndef MICROPY_REPL_INFO
+#define MICROPY_REPL_INFO (0)
+#endif
+
 // Whether to include emacs-style readline behavior in REPL
 #ifndef MICROPY_REPL_EMACS_KEYS
 #define MICROPY_REPL_EMACS_KEYS (0)
@@ -887,6 +892,11 @@ typedef double mp_float_t;
 // i.e. slice.start, slice.stop, slice.step
 #ifndef MICROPY_PY_BUILTINS_SLICE_ATTRS
 #define MICROPY_PY_BUILTINS_SLICE_ATTRS (0)
+#endif
+
+// Whether to support the .indices(len) method on slice objects
+#ifndef MICROPY_PY_BUILTINS_SLICE_INDICES
+#define MICROPY_PY_BUILTINS_SLICE_INDICES (0)
 #endif
 
 // Whether to support frozenset object
