@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2019 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -24,33 +24,20 @@
  * THE SOFTWARE.
  */
 
-#include <stdlib.h>
-#include <assert.h>
+#include <stdint.h>
 
-#include "py/obj.h"
+// Select nan-boxing object model
+#define MICROPY_OBJ_REPR (MICROPY_OBJ_REPR_D)
 
-/******************************************************************************/
-/* singleton objects defined by Python                                        */
+// Native emitters don't work with nan-boxing
+#define MICROPY_EMIT_THUMB (0)
+#define MICROPY_EMIT_INLINE_THUMB (0)
 
-typedef struct _mp_obj_singleton_t {
-    mp_obj_base_t base;
-    qstr name;
-} mp_obj_singleton_t;
+// Types needed for nan-boxing
+#define UINT_FMT "%llu"
+#define INT_FMT "%lld"
+typedef int64_t mp_int_t;
+typedef uint64_t mp_uint_t;
 
-STATIC void singleton_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
-    (void)kind;
-    mp_obj_singleton_t *self = MP_OBJ_TO_PTR(self_in);
-    mp_printf(print, "%q", self->name);
-}
-
-const mp_obj_type_t mp_type_singleton = {
-    { &mp_type_type },
-    .name = MP_QSTR_,
-    .print = singleton_print,
-    .unary_op = mp_generic_unary_op,
-};
-
-const mp_obj_singleton_t mp_const_ellipsis_obj = {{&mp_type_singleton}, MP_QSTR_Ellipsis};
-#if MICROPY_PY_BUILTINS_NOTIMPLEMENTED
-const mp_obj_singleton_t mp_const_notimplemented_obj = {{&mp_type_singleton}, MP_QSTR_NotImplemented};
-#endif
+// Include base configuration file for rest of configuration
+#include <mpconfigport.h>
