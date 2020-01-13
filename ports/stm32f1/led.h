@@ -28,9 +28,13 @@
 
 typedef enum {
 	PYB_LED1 = 1,
-	PYB_LED2 = 2,
-	PYB_LED3 = 3,
-	PYB_LED4 = 4,
+    PYB_LED2 = 2,
+    PYB_LED3 = 3,
+    PYB_LED4 = 4,
+    PYB_LED_RED    = PYB_LED1,
+    PYB_LED_GREEN  = PYB_LED2,
+    PYB_LED_YELLOW = PYB_LED3,
+    PYB_LED_BLUE   = PYB_LED4,
 } pyb_led_t;
 
 void led_init(void);

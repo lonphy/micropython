@@ -62,12 +62,11 @@ typedef struct _machine_uart_obj_t {
 
 extern const mp_obj_type_t machine_uart_type;
 
+void uart_init0(void);
 void uart_deinit_all(void);
 bool uart_exists(int uart_id);
 
-// 串口初始化
-bool uart_init(machine_uart_obj_t *uart_obj,
-    uint32_t baudrate, uint32_t bits, uint32_t parity, uint32_t stop, uint32_t flow);
+bool uart_init(machine_uart_obj_t *uart_obj, uint32_t baudrate, uint32_t bits, uint32_t parity, uint32_t stop, uint32_t flow);
 void uart_set_rxbuf(machine_uart_obj_t *self, size_t len, void *buf);
 void uart_deinit(machine_uart_obj_t *uart_obj);
 void uart_irq_handler(mp_uint_t uart_id);

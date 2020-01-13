@@ -28,19 +28,24 @@
 
 Q(boot.py)
 Q(main.py)
+
+// For uos.sep
+Q(/)
+
 // Entries for sys.path
 Q(/flash)
 Q(/flash/lib)
 Q(/sd)
 Q(/sd/lib)
+
+#if MICROPY_HW_ENABLE_USB
 // for usb modes
 Q(MSC+HID)
 Q(VCP+MSC)
 Q(VCP+HID)
 Q(CDC+MSC)
 Q(CDC+HID)
-Q(/)
-
+#endif
 
 // The following qstrings not referenced from anywhere in the sources
 Q(CDC)

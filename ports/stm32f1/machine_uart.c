@@ -38,7 +38,7 @@
 #include "irq.h"
 #include "pendsv.h"
 
-/// \moduleref pyb
+/// \moduleref machine
 /// \class UART - duplex serial communication bus
 ///
 /// UART implements the standard UART/USART duplex serial communications protocol.  At
@@ -48,7 +48,7 @@
 ///
 /// UART objects can be created and initialised using:
 ///
-///     from pyb import UART
+///     from machine import UART
 ///
 ///     uart = UART(1, 9600)                         # init with given baudrate
 ///     uart.init(9600, bits=8, parity=None, stop=1) # init with given parameters

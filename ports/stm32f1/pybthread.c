@@ -127,7 +127,7 @@ uint32_t pyb_thread_new(pyb_thread_t *thread, void *stack, size_t stack_len, voi
     *--stack_top = (uint32_t)arg; // r0
     *--stack_top = 0xfffffff9; // lr (return to thread mode, non-FP, use MSP)
     stack_top -= 8; // r4-r11
-    stack_top -= 16; // s16-s31 (we assume all threads use FP registers)
+    // stack_top -= 16; // s16-s31 (stm32f1 no FP registers)
     thread->sp = stack_top;
     thread->local_state = 0;
     thread->arg = arg;

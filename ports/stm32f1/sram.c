@@ -159,6 +159,7 @@ bool __attribute__((optimize("O0"))) sram_test(bool fast) {
     /* test data bus */
     for (uint16_t i = 1; i; i <<= 1) {
         *mem16_base = i;
+        __DSB();
         if (*mem16_base != i) {
             printf("data bus lines test failed! data (%d)\n", i);
             __asm__ volatile ("BKPT");
@@ -169,6 +170,7 @@ bool __attribute__((optimize("O0"))) sram_test(bool fast) {
     /* Check individual address lines */
     for (uint32_t i = 1; i < MICROPY_HW_SRAM_SIZE; i <<= 1) {
         mem_base[i] = pattern;
+        __DSB();
         if (mem_base[i] != pattern) {
             printf("address bus lines test failed! address (%p)\n", &mem_base[i]);
             __asm__ volatile ("BKPT");
@@ -188,6 +190,7 @@ bool __attribute__((optimize("O0"))) sram_test(bool fast) {
     if (!fast) {
         for (uint32_t i = 0; i < MICROPY_HW_SRAM_SIZE; ++i) {
             mem_base[i] = pattern;
+            __DSB();
             if (mem_base[i] != pattern) {
                 printf("address bus test failed! address (%p)\n", &mem_base[i]);
                 __asm__ volatile ("BKPT");

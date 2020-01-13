@@ -1,5 +1,5 @@
 # Select the board to build for: if not given on the command line,
-# then default to QiMing_F103RC.
+# then default to MPY_ST103.
 BOARD ?= MPY_ST103
 
 # If the build directory is not given, make it reflect the board name.
@@ -31,7 +31,6 @@ LD_DIR=boards
 CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32F1xx/Include
 HAL_DIR=lib/stm32lib/STM32F1xx_HAL_Driver
 USBDEV_DIR=usbdev
-FATFS_DIR=lib/oofatfs
 DFU=$(TOP)/tools/dfu.py
 # may need to prefix dfu-util with sudo
 USE_PYDFU ?= 1
@@ -60,6 +59,8 @@ INC += -Ilwip_inc
 CFLAGS_CORTEX_M = -mthumb
 
 # Select hardware floating-point support
+SUPPORTS_HARDWARE_FP_SINGLE = 0
+SUPPORTS_HARDWARE_FP_DOUBLE = 0
 # CFLAGS_CORTEX_M += -msoft-float
 
 # Options for particular MCU series
@@ -67,16 +68,19 @@ CFLAGS_MCU_f1 = $(CFLAGS_CORTEX_M) -mtune=cortex-m3 -mcpu=cortex-m3
 
 CFLAGS = $(INC) -Wall -Wpointer-arith -Werror -std=gnu99 -nostdlib $(CFLAGS_MOD) $(CFLAGS_EXTRA)
 CFLAGS += -D$(CMSIS_MCU)
-CFLAGS += $(CFLAGS_MCU_$(MCU_SERIES))
+CFLAGS += $(CFLAGS_MCU_f1)
 CFLAGS += $(COPT)
 CFLAGS += -I$(BOARD_DIR)
 CFLAGS += -DMICROPY_HW_VTOR=$(TEXT0_ADDR)
-
-ifeq ($(MICROPY_FLOAT_IMPL),double)
-CFLAGS += -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_DOUBLE
-else
 CFLAGS += -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT
 CFLAGS += -fsingle-precision-constant -Wdouble-promotion
+
+# Configure for nan-boxing object model if requested
+ifeq ($(NANBOX),1)
+CFLAGS += -DMP_CONFIGFILE='"mpconfigport_nanbox.h"'
+ifneq ($(MICROPY_FLOAT_IMPL),none)
+MICROPY_FLOAT_IMPL = double
+endif
 endif
 
 LDFLAGS = -nostdlib -L $(LD_DIR) $(addprefix -T,$(LD_FILES)) -Map=$(@:.elf=.map) --cref
@@ -98,15 +102,12 @@ endif
 # Options for mpy-cross
 MPY_CROSS_FLAGS += -march=armv7m
 
-# ignore
-# netutils/netutils.c
-# netutils/dhcpserver.c
 SRC_LIB = $(addprefix lib/,\
 	libc/string0.c \
-	oofatfs/ff.c \
-	oofatfs/ffunicode.c \
 	mp-readline/readline.c \
+	netutils/netutils.c \
 	netutils/trace.c \
+	netutils/dhcpserver.c \
 	timeutils/timeutils.c \
 	utils/pyexec.c \
 	utils/interrupt_char.c \
@@ -114,52 +115,6 @@ SRC_LIB = $(addprefix lib/,\
 	utils/mpirq.c \
 	)
 
-ifeq ($(MICROPY_FLOAT_IMPL),double)
-SRC_LIBM = $(addprefix lib/libm_dbl/,\
-	__cos.c \
-	__expo2.c \
-	__fpclassify.c \
-	__rem_pio2.c \
-	__rem_pio2_large.c \
-	__signbit.c \
-	__sin.c \
-	__tan.c \
-	acos.c \
-	acosh.c \
-	asin.c \
-	asinh.c \
-	atan.c \
-	atan2.c \
-	atanh.c \
-	ceil.c \
-	cos.c \
-	cosh.c \
-	copysign.c \
-	erf.c \
-	exp.c \
-	expm1.c \
-	floor.c \
-	fmod.c \
-	frexp.c \
-	ldexp.c \
-	lgamma.c \
-	log.c \
-	log10.c \
-	log1p.c \
-	modf.c \
-	nearbyint.c \
-	pow.c \
-	rint.c \
-	scalbn.c \
-	sin.c \
-	sinh.c \
-	sqrt.c \
-	tan.c \
-	tanh.c \
-	tgamma.c \
-	trunc.c \
-	)
-else
 SRC_LIBM = $(addprefix lib/libm/,\
 	math.c \
 	acoshf.c \
@@ -188,7 +143,6 @@ SRC_LIBM = $(addprefix lib/libm/,\
 	wf_tgamma.c \
 	ef_sqrt.c \
 	)
-endif
 
 EXTMOD_SRC_C = $(addprefix extmod/,\
 	modonewire.c \
@@ -241,6 +195,8 @@ SRC_C = \
 	modstm.c \
 	moduos.c \
 	modutime.c \
+	modusocket.c \
+	modnetwork.c \
 	extint.c \
 	usrsw.c \
 	rtc.c \
@@ -299,7 +255,16 @@ SRC_USBDEV = $(addprefix $(USBDEV_DIR)/,\
 	class/src/usbd_cdc_msc_hid.c \
 	class/src/usbd_msc_bot.c \
 	class/src/usbd_msc_scsi.c \
-	)
+)
+
+# for ESP8266-01(S) module
+ifeq ($(MICROPY_PY_ESP826601),1)
+CFLAGS_MOD += -DMICROPY_PY_ESP826601=$(MICROPY_PY_ESP826601)
+CFLAGS_MOD += -DMICROPY_PY_ESP826601_TCP_BUF_SIZE=$(MICROPY_PY_ESP826601_TCP_BUF_SIZE)
+SRC_MOD    += modnwesp826601.c
+SRC_MOD    += drivers/esp826601/esp826601_ctrl.c
+SRC_MOD    += drivers/esp826601/esp826601_socket.c
+endif
 
 ifeq ($(MICROPY_SSL_MBEDTLS),1)
 CFLAGS_MOD += -DMBEDTLS_CONFIG_FILE='"mbedtls/mbedtls_config.h"'

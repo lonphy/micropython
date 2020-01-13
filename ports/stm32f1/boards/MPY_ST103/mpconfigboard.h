@@ -3,18 +3,24 @@
 #define MICROPY_HW_BOARD_NAME       "MPY ST103"
 #define MICROPY_HW_MCU_NAME         "STM32F103ZG"
 
+#define MICROPY_PY_THREAD           (1)
 #define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE (0)
-#define MICROPY_HW_HAS_FLASH        (1)
+#define MICROPY_HW_HAS_FLASH        (0)
 #define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_USB       (1)
 #define MICROPY_HW_USB_FS           (1)
 #define MICROPY_HW_ENABLE_ADC       (1)
 #define MICROPY_HW_ENABLE_DAC       (1)
-#define MICROPY_HW_HAS_LCD          (1)
+
 #define MICROPY_HW_ENABLE_SRAM      (1)
-#define MICROPY_HW_ENABLE_SPIFLASH  (1)
+#define MICROPY_HW_ENABLE_SPIFLASH  (0)
 #define MICROPY_HW_ENABLE_NORFLASH  (0)
+// #define MICROPY_HW_DEBUG            (3)
+
+#define MICROPY_HW_ENABLE_SERVO      (1)
+#define MICROPY_HW_HAS_MMA7660       (0)
+#define MICROPY_HW_HAS_LCD           (1)
 
 // HSE is 8MHz
 #define MICROPY_HW_CLK_USE_HSE      (1)
@@ -53,6 +59,9 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_UART1_TX     (pin_A9)
 #define MICROPY_HW_UART1_RX     (pin_A10)
 
+#define MICROPY_HW_UART_REPL        MACHINE_UART_1
+#define MICROPY_HW_UART_REPL_BAUD   115200
+
 // USART2
 #define MICROPY_HW_UART2_TX     (pin_A2)
 #define MICROPY_HW_UART2_RX     (pin_A3)
@@ -60,10 +69,6 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 // USART3 for esp8266
 #define MICROPY_HW_UART3_TX     (pin_B10)
 #define MICROPY_HW_UART3_RX     (pin_B11)
-
-#define MICROPY_HW_UART_REPL        MACHINE_UART_1
-#define MICROPY_HW_UART_REPL_BAUD   115200
-// --------------------------------------------------------------
 
 // I2C busses, need remap, in ./init.c
 #define MICROPY_HW_I2C1_SCL (pin_B8)
@@ -76,11 +81,6 @@ extern const struct _mp_spiflash_config_t spiflash_config;
 #define MICROPY_HW_SPI2_SCK  (pin_B13)
 #define MICROPY_HW_SPI2_MISO (pin_B14)
 #define MICROPY_HW_SPI2_MOSI (pin_B15)
-
-// 1 x CAN bus
-// #define MICROPY_HW_CAN1_TX (pin_B9) // PB9,PD1,PA12
-// #define MICROPY_HW_CAN1_RX (pin_B8) // PB8,PD0,PA11
-
 
 // 1 x buzzer link to PC7
 

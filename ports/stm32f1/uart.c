@@ -54,6 +54,9 @@
 
 extern void NORETURN __fatal_error(const char *msg);
 
+void uart_init0(void) {
+}
+
 // unregister all interrupt sources
 void uart_deinit_all(void) {
 	for (int i = 0; i < MP_ARRAY_SIZE(MP_STATE_PORT(machine_uart_obj_all)); i++) {
@@ -108,8 +111,8 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 			   uint32_t bits,
 			   uint32_t parity,
 			   uint32_t stop,
-			   uint32_t flow)
-{
+			   uint32_t flow
+){
 	USART_TypeDef *UARTx;
 	IRQn_Type irqn;
 	int uart_unit;
@@ -117,7 +120,7 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 	const pin_obj_t *pins[4] = {0};
 
 	switch (uart_obj->uart_id) {
-#if defined(MICROPY_HW_UART1_TX) && defined(MICROPY_HW_UART1_RX)
+    #if defined(MICROPY_HW_UART1_TX) && defined(MICROPY_HW_UART1_RX)
 	case MACHINE_UART_1:
 		uart_unit = 1;
 		UARTx = USART1;
@@ -126,51 +129,51 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 		pins[1] = MICROPY_HW_UART1_RX;
 		__HAL_RCC_USART1_CLK_ENABLE();
 		break;
-#endif
+    #endif
 
-#if defined(MICROPY_HW_UART2_TX) && defined(MICROPY_HW_UART2_RX)
+    #if defined(MICROPY_HW_UART2_TX) && defined(MICROPY_HW_UART2_RX)
 	case MACHINE_UART_2:
 		uart_unit = 2;
 		UARTx = USART2;
 		irqn = USART2_IRQn;
 		pins[0] = MICROPY_HW_UART2_TX;
 		pins[1] = MICROPY_HW_UART2_RX;
-#if defined(MICROPY_HW_UART2_RTS)
+        #if defined(MICROPY_HW_UART2_RTS)
 		if (flow & UART_HWCONTROL_RTS) {
 			pins[2] = MICROPY_HW_UART2_RTS;
 		}
-#endif
-#if defined(MICROPY_HW_UART2_CTS)
+        #endif
+        #if defined(MICROPY_HW_UART2_CTS)
 		if (flow & UART_HWCONTROL_CTS) {
 			pins[3] = MICROPY_HW_UART2_CTS;
 		}
-#endif
+        #endif
 		__HAL_RCC_USART2_CLK_ENABLE();
 		break;
-#endif
+    #endif
 
-#if defined(MICROPY_HW_UART3_TX) && defined(MICROPY_HW_UART3_RX)
+    #if defined(MICROPY_HW_UART3_TX) && defined(MICROPY_HW_UART3_RX)
 	case MACHINE_UART_3:
 		uart_unit = 3;
 		UARTx = USART3;
 		irqn = USART3_IRQn;
 		pins[0] = MICROPY_HW_UART3_TX;
 		pins[1] = MICROPY_HW_UART3_RX;
-#if defined(MICROPY_HW_UART3_RTS)
+        #if defined(MICROPY_HW_UART3_RTS)
 		if (flow & UART_HWCONTROL_RTS) {
 			pins[2] = MICROPY_HW_UART3_RTS;
 		}
-#endif
-#if defined(MICROPY_HW_UART3_CTS)
+        #endif
+        #if defined(MICROPY_HW_UART3_CTS)
 		if (flow & UART_HWCONTROL_CTS) {
 			pins[3] = MICROPY_HW_UART3_CTS;
 		}
-#endif
+        #endif
 		__HAL_RCC_USART3_CLK_ENABLE();
 		break;
-#endif
+    #endif
 
-#if defined(MICROPY_HW_UART4_TX) && defined(MICROPY_HW_UART4_RX)
+    #if defined(MICROPY_HW_UART4_TX) && defined(MICROPY_HW_UART4_RX)
 	case MACHINE_UART_4:
 		uart_unit = 4;
 		UARTx = UART4;
@@ -179,9 +182,9 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 		pins[0] = MICROPY_HW_UART4_TX;
 		pins[1] = MICROPY_HW_UART4_RX;
 		break;
-#endif
+    #endif
 
-#if defined(MICROPY_HW_UART5_TX) && defined(MICROPY_HW_UART5_RX)
+    #if defined(MICROPY_HW_UART5_TX) && defined(MICROPY_HW_UART5_RX)
 	case MACHINE_UART_5:
 		uart_unit = 5;
 		UARTx = UART5;
@@ -190,7 +193,7 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 		pins[0] = MICROPY_HW_UART5_TX;
 		pins[1] = MICROPY_HW_UART5_RX;
 		break;
-#endif
+    #endif
 	default:
 		// UART does not exist or is not configured for this board
 		return false;
@@ -241,7 +244,7 @@ bool uart_init(machine_uart_obj_t *uart_obj,
 		uart_obj->char_mask = 0x1ff;
 		uart_obj->char_width = CHAR_WIDTH_9BIT;
 	} else {
-		if (bits == UART_WORDLENGTH_9B || parity == UART_PARITY_NONE) {
+		if (bits == UART_WORDLENGTH_8B || parity == UART_PARITY_NONE) {
 			uart_obj->char_mask = 0xff;
 		} else {
 			uart_obj->char_mask = 0x7f;

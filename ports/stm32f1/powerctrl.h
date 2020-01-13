@@ -28,6 +28,8 @@
 
 #include <stdint.h>
 
+void SystemClock_Config(void);
+
 // 软件复位mcu
 NORETURN void powerctrl_mcu_reset(void);
 

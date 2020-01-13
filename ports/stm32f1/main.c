@@ -30,12 +30,18 @@
 #include "py/runtime.h"
 #include "py/stackctrl.h"
 #include "py/gc.h"
+#include "py/mperrno.h"
 #include "py/mphal.h"
 #include "lib/mp-readline/readline.h"
 #include "lib/utils/pyexec.h"
 #include "lib/oofatfs/ff.h"
+#include "lib/littlefs/lfs1.h"
+#include "lib/littlefs/lfs1_util.h"
+#include "lib/littlefs/lfs2.h"
+#include "lib/littlefs/lfs2_util.h"
 #include "extmod/vfs.h"
 #include "extmod/vfs_fat.h"
+#include "extmod/vfs_lfs.h"
 
 #include "systick.h"
 #include "pendsv.h"
@@ -64,39 +70,33 @@
 #include "can.h"
 #include "modnetwork.h"
 
-void SystemClock_Config(void);
-
 #if MICROPY_PY_THREAD
-    STATIC pyb_thread_t pyb_thread_main;
-#endif
-
-#if MICROPY_HW_ENABLE_STORAGE
-    STATIC fs_user_mount_t fs_user_mount_flash;
+STATIC pyb_thread_t pyb_thread_main;
 #endif
 
 #if defined(MICROPY_HW_UART_REPL)
-    #ifndef MICROPY_HW_UART_REPL_RXBUF
-        #define MICROPY_HW_UART_REPL_RXBUF (260)
-    #endif
-    STATIC machine_uart_obj_t machine_uart_repl_obj;
-    STATIC uint8_t machine_uart_repl_rxbuf[MICROPY_HW_UART_REPL_RXBUF];
+#ifndef MICROPY_HW_UART_REPL_RXBUF
+#define MICROPY_HW_UART_REPL_RXBUF (260)
+#endif
+STATIC machine_uart_obj_t machine_uart_repl_obj;
+STATIC uint8_t machine_uart_repl_rxbuf[MICROPY_HW_UART_REPL_RXBUF];
 #endif
 
 void flash_error(int n) {
     for (int i = 0; i < n; i++) {
-        led_state(PYB_LED1, 1);
-        led_state(PYB_LED2, 0);
+        led_state(PYB_LED_RED, 1);
+        led_state(PYB_LED_GREEN, 0);
         mp_hal_delay_ms(250);
-        led_state(PYB_LED1, 0);
-        led_state(PYB_LED2, 1);
+        led_state(PYB_LED_RED, 0);
+        led_state(PYB_LED_GREEN, 1);
         mp_hal_delay_ms(250);
     }
-    led_state(PYB_LED2, 0);
+    led_state(PYB_LED_GREEN, 0);
 }
 
-void NORETURN __fatal_error(const char* msg) {
-    for (volatile uint delay = 0; delay < 10000000; delay++);
-
+void NORETURN __fatal_error(const char *msg) {
+    for (volatile uint delay = 0; delay < 10000000; delay++) {
+    }
     led_state(1, 1);
     led_state(2, 1);
     led_state(3, 1);
@@ -105,7 +105,8 @@ void NORETURN __fatal_error(const char* msg) {
     mp_hal_stdout_tx_strn(msg, strlen(msg));
     for (uint i = 0;;) {
         led_toggle(((i++) & 3) + 1);
-        for (volatile uint delay = 0; delay < 10000000; delay++) {}
+        for (volatile uint delay = 0; delay < 10000000; delay++) {
+        }
         if (i >= 16) {
             // to conserve power
             __WFI();
@@ -113,22 +114,24 @@ void NORETURN __fatal_error(const char* msg) {
     }
 }
 
-void nlr_jump_fail(void* val) {
+void nlr_jump_fail(void *val) {
     printf("FATAL: uncaught exception %p\n", val);
     mp_obj_print_exception(&mp_plat_print, MP_OBJ_FROM_PTR(val));
     __fatal_error("");
 }
 
 #ifndef NDEBUG
-void MP_WEAK __assert_func(const char* file, int line, const char* func, const char* expr) {
+void MP_WEAK __assert_func(const char *file, int line, const char *func, const char *expr) {
     (void)func;
     printf("Assertion '%s' failed, at file %s:%d\n", expr, file, line);
     __fatal_error("");
 }
 #endif
 
-STATIC mp_obj_t pyb_main(size_t n_args, const mp_obj_t* pos_args, mp_map_t* kw_args) {
-    static const mp_arg_t allowed_args[] = {{MP_QSTR_opt, MP_ARG_INT, {.u_int = 0}}};
+STATIC mp_obj_t pyb_main(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    static const mp_arg_t allowed_args[] = {
+        { MP_QSTR_opt, MP_ARG_INT, {.u_int = 0} }
+    };
 
     if (mp_obj_is_str(pos_args[0])) {
         MP_STATE_PORT(pyb_config_main) = pos_args[0];
@@ -136,72 +139,99 @@ STATIC mp_obj_t pyb_main(size_t n_args, const mp_obj_t* pos_args, mp_map_t* kw_a
         // parse args
         mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
         mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+        #if MICROPY_ENABLE_COMPILER
         MP_STATE_VM(mp_optimise_value) = args[0].u_int;
+        #endif
     }
     return mp_const_none;
 }
 MP_DEFINE_CONST_FUN_OBJ_KW(pyb_main_obj, 1, pyb_main);
 
 #if MICROPY_HW_ENABLE_STORAGE
+STATIC int vfs_mount_and_chdir(mp_obj_t bdev, mp_obj_t mount_point) {
+    nlr_buf_t nlr;
+    mp_int_t ret = -MP_EIO;
+    if (nlr_push(&nlr) == 0) {
+        mp_obj_t args[] = { bdev, mount_point };
+        mp_vfs_mount(2, args, (mp_map_t*)&mp_const_empty_map);
+        mp_vfs_chdir(mount_point);
+        ret = 0; // success
+        nlr_pop();
+    } else {
+        mp_obj_base_t *exc = nlr.ret_val;
+        if (mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(exc->type), MP_OBJ_FROM_PTR(&mp_type_OSError))) {
+            mp_obj_t v = mp_obj_exception_get_value(MP_OBJ_FROM_PTR(exc));
+            mp_obj_get_int_maybe(v, &ret); // get errno value
+            ret = -ret;
+        }
+    }
+    return ret;
+}
+
 // avoid inlining to avoid stack usage within main()
 MP_NOINLINE STATIC bool init_flash_fs(uint reset_mode) {
-    // init the vfs object
-    fs_user_mount_t* vfs_fat = &fs_user_mount_flash;
-    vfs_fat->flags           = 0;
-    pyb_flash_init_vfs(vfs_fat);
+    if (reset_mode == 3) {
+        // Asked by user to reset filesystem
+        factory_reset_create_filesystem();
+    }
 
-    // try to mount the flash
-    FRESULT res = f_mount(&vfs_fat->fatfs);
+    // Default block device to entire flash storage
+    mp_obj_t bdev = MP_OBJ_FROM_PTR(&pyb_flash_obj);
 
-    if (reset_mode == 3 || res == FR_NO_FILESYSTEM) {
-        // no filesystem, or asked to reset it, so create a fresh one
+    #if MICROPY_VFS_LFS1 || MICROPY_VFS_LFS2
 
-        // LED on to indicate creation of LFS
-        led_state(PYB_LED2, 1);
-        uint32_t start_tick = HAL_GetTick();
+    // Try to detect the block device used for the main filesystem, based on the first block
 
-        uint8_t working_buf[FF_MAX_SS];
-        res = f_mkfs(&vfs_fat->fatfs, FM_FAT, 0, working_buf, sizeof(working_buf));
-        if (res == FR_OK) {
-            // success creating fresh LFS
-        } else {
-            printf("MPY: can't create flash filesystem\n");
-            return false;
+    uint8_t buf[FLASH_BLOCK_SIZE];
+    storage_read_blocks(buf, FLASH_PART1_START_BLOCK, 1);
+
+    mp_int_t len = -1;
+
+    #if MICROPY_VFS_LFS1
+    if (memcmp(&buf[40], "littlefs", 8) == 0) {
+        // LFS1
+        lfs1_superblock_t *superblock = (void*)&buf[12];
+        uint32_t block_size = lfs1_fromle32(superblock->d.block_size);
+        uint32_t block_count = lfs1_fromle32(superblock->d.block_count);
+        len = block_count * block_size;
+    }
+    #endif
+
+    #if MICROPY_VFS_LFS2
+    if (memcmp(&buf[8], "littlefs", 8) == 0) {
+        // LFS2
+        lfs2_superblock_t *superblock = (void*)&buf[20];
+        uint32_t block_size = lfs2_fromle32(superblock->block_size);
+        uint32_t block_count = lfs2_fromle32(superblock->block_count);
+        len = block_count * block_size;
+    }
+    #endif
+
+    if (len != -1) {
+        // Detected a littlefs filesystem so create correct block device for it
+        mp_obj_t args[] = { MP_OBJ_NEW_QSTR(MP_QSTR_len), MP_OBJ_NEW_SMALL_INT(len) };
+        bdev = pyb_flash_type.make_new(&pyb_flash_type, 0, 1, args);
+    }
+
+    #endif
+
+    // Try to mount the flash on "/flash" and chdir to it for the boot-up directory.
+    mp_obj_t mount_point = MP_OBJ_NEW_QSTR(MP_QSTR__slash_flash);
+    int ret = vfs_mount_and_chdir(bdev, mount_point);
+
+    if (ret == -MP_ENODEV && bdev == MP_OBJ_FROM_PTR(&pyb_flash_obj) && reset_mode != 3) {
+        // No filesystem, bdev is still the default (so didn't detect a possibly corrupt littlefs),
+        // and didn't already create a filesystem, so try to create a fresh one now.
+        ret = factory_reset_create_filesystem();
+        if (ret == 0) {
+            ret = vfs_mount_and_chdir(bdev, mount_point);
         }
+    }
 
-        // set label
-        f_setlabel(&vfs_fat->fatfs, MICROPY_HW_FLASH_FS_LABEL);
-
-        // populate the filesystem with factory files
-        factory_reset_make_files(&vfs_fat->fatfs);
-
-        // keep LED on for at least 200ms
-        systick_wait_at_least(start_tick, 200);
-        led_state(PYB_LED2, 0);
-    } else if (res == FR_OK) {
-        // mount sucessful
-    } else {
-    fail:
+    if (ret != 0) {
         printf("MPY: can't mount flash\n");
         return false;
     }
-
-    // mount the flash device (there should be no other devices mounted at this
-    // point) we allocate this structure on the heap because vfs->next is a root
-    // pointer
-    mp_vfs_mount_t* vfs = m_new_obj_maybe(mp_vfs_mount_t);
-    if (vfs == NULL) {
-        goto fail;
-    }
-    vfs->str                     = "/flash";
-    vfs->len                     = 6;
-    vfs->obj                     = MP_OBJ_FROM_PTR(vfs_fat);
-    vfs->next                    = NULL;
-    MP_STATE_VM(vfs_mount_table) = vfs;
-
-    // The current directory is used as the boot up directory.
-    // It is set to the internal flash filesystem by default.
-    MP_STATE_PORT(vfs_cur) = vfs;
 
     return true;
 }
@@ -217,7 +247,7 @@ STATIC bool init_sdcard_fs(void) {
         if (vfs == NULL || vfs_fat == NULL) {
             break;
         }
-        vfs_fat->flags = FSUSER_FREE_OBJ;
+        vfs_fat->blockdev.flags = MP_BLOCKDEV_FLAG_FREE_OBJ;
         sdcard_init_vfs(vfs_fat, part_num);
 
         // try to mount the partition
@@ -290,6 +320,7 @@ STATIC bool init_sdcard_fs(void) {
 STATIC uint update_reset_mode(uint reset_mode) {
     #if MICROPY_HW_HAS_SWITCH
     if (switch_get()) {
+
         // The original method used on the pyboard is appropriate if you have 2
         // or more LEDs.
         #if defined(MICROPY_HW_LED2)
@@ -430,7 +461,7 @@ void stm32_main(uint32_t reset_mode) {
     #if MICROPY_HW_ENABLE_RTC
     rtc_init_start(false);
     #endif
-
+    uart_init0();
     spi_init0();
 
     #if MICROPY_HW_ENABLE_SDCARD
@@ -441,6 +472,11 @@ void stm32_main(uint32_t reset_mode) {
     storage_init();
     #endif
 
+    #if MICROPY_PY_ESP826601
+    extern void mod_network_esp826601_poll_wrapper(uint32_t ticks_ms);
+    systick_enable_dispatch(SYSTICK_DISPATCH_ESP826601, mod_network_esp826601_poll_wrapper);
+    #endif
+    
     #if defined(MICROPY_HW_UART_REPL)
     // Set up a UART REPL using a statically allocated object
     machine_uart_repl_obj.base.type    = &machine_uart_type;
@@ -537,7 +573,7 @@ soft_reset:
     if (sdcard_is_present()) {
         // if there is a file in the flash called "SKIPSD", then we don't mount
         // the SD card
-        if (!mounted_flash || f_stat(&fs_user_mount_flash.fatfs, "/SKIPSD", NULL) != FR_OK) {
+        if (!mounted_flash || mp_vfs_import_stat("SKIPSD") == MP_IMPORT_STAT_NO_EXIST) {
             mounted_sdcard = init_sdcard_fs();
         }
     }
@@ -637,6 +673,7 @@ soft_reset:
         }
     }
 
+    #if MICROPY_ENABLE_COMPILER
     // Main script is finished, so now go into REPL mode.
     // The REPL mode can change, or it can request a soft reset.
     for (;;) {
@@ -650,6 +687,7 @@ soft_reset:
             }
         }
     }
+    #endif
 
 soft_reset_exit:
     // soft reset

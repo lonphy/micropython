@@ -158,7 +158,9 @@ bool pyb_usb_dev_init(uint16_t vid, uint16_t pid, uint8_t mode, size_t msc_n, co
                     break;
                 #endif
                 default:
+                    #if MICROPY_HW_HAS_FLASH
                     msc_unit_default[0] = &pyb_flash_type;
+                    #endif
                     break;
             }
         }
@@ -347,13 +349,18 @@ STATIC mp_obj_t pyb_usb_mode(size_t n_args, const mp_obj_t *pos_args, mp_map_t *
         if (msc_n > USBD_MSC_MAX_LUN) {
             mp_raise_ValueError("too many logical units");
         }
+
         for (size_t i = 0; i < msc_n; ++i) {
             mp_obj_type_t *type = mp_obj_get_type(items[i]);
-            if (type == &pyb_flash_type
+            if (0
+                #if MICROPY_HW_HAS_FLASH
+                || type == &pyb_flash_type
+                #endif
+
                 #if MICROPY_HW_ENABLE_SDCARD
                 || type == &pyb_sdcard_type
                 #endif
-                ) {
+            ) {
                 msc_unit[i] = type;
             } else {
                 mp_raise_ValueError("unsupported logical unit");

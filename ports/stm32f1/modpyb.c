@@ -93,8 +93,11 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_country_obj, 0, 1, pyb_country);
 STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__),    MP_ROM_QSTR(MP_QSTR_pyb) },
     { MP_ROM_QSTR(MP_QSTR_fault_debug), MP_ROM_PTR(&pyb_fault_debug_obj) },
-    { MP_ROM_QSTR(MP_QSTR_repl_info),   MP_ROM_PTR(&pyb_set_repl_info_obj) },
 
+    #if MICROPY_REPL_INFO
+    { MP_ROM_QSTR(MP_QSTR_repl_info),   MP_ROM_PTR(&pyb_set_repl_info_obj) },
+    #endif
+    
     #if IRQ_ENABLE_STATS
     { MP_ROM_QSTR(MP_QSTR_irq_stats), MP_ROM_PTR(&pyb_irq_stats_obj) },
     #endif

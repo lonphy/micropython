@@ -156,7 +156,7 @@ __attribute__((naked)) void PendSV_Handler(void) {
         #if MICROPY_PY_THREAD
         // Do a thread context switch
         "push {r4-r11, lr}\n"
-        "vpush {s16-s31}\n"
+        // "vpush {s16-s31}\n"          // FPU相关寄存器压栈, 在STM32F1中是没有的
         "mrs r5, primask\n"             // save PRIMASK in r5
         "cpsid i\n"                     // disable interrupts while we change stacks
         "mov r0, sp\n"                  // pass sp to save
@@ -165,7 +165,7 @@ __attribute__((naked)) void PendSV_Handler(void) {
         "mov lr, r4\n"                  // restore lr
         "mov sp, r0\n"                  // switch stacks
         "msr primask, r5\n"             // reenable interrupts
-        "vpop {s16-s31}\n"
+        // "vpop {s16-s31}\n"           // FPU相关寄存器出栈 在STM32F1中是没有的
         "pop {r4-r11, lr}\n"
         "bx lr\n"                       // return from interrupt; will return to new thread
         #else

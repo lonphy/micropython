@@ -80,9 +80,6 @@
 #define MICROPY_ENABLE_SCHEDULER    (1)
 #define MICROPY_SCHEDULER_DEPTH     (8)
 #define MICROPY_VFS                 (1)
-#ifndef MICROPY_VFS_FAT
-#define MICROPY_VFS_FAT             (1)
-#endif
 
 // control over Python builtins
 #define MICROPY_PY_FUNCTION_ATTRS   (1)
@@ -97,8 +94,8 @@
 #define MICROPY_PY_BUILTINS_SLICE_ATTRS (1)
 #define MICROPY_PY_BUILTINS_ROUND_INT (1)
 #define MICROPY_PY_ALL_SPECIAL_METHODS (1)
-#define MICROPY_PY_BUILTINS_COMPILE (1)
-#define MICROPY_PY_BUILTINS_EXECFILE (1)
+#define MICROPY_PY_BUILTINS_COMPILE (MICROPY_ENABLE_COMPILER)
+#define MICROPY_PY_BUILTINS_EXECFILE (MICROPY_ENABLE_COMPILER)
 #define MICROPY_PY_BUILTINS_NOTIMPLEMENTED (1)
 #define MICROPY_PY_BUILTINS_INPUT   (1)
 #define MICROPY_PY_BUILTINS_POW3    (1)
@@ -146,6 +143,7 @@
 #define MICROPY_PY_UTIME_MP_HAL     (1)
 #define MICROPY_PY_OS_DUPTERM       (3)
 #define MICROPY_PY_UOS_DUPTERM_BUILTIN_STREAM (1)
+#define MICROPY_PY_LWIP_SOCK_RAW    (0)
 #define MICROPY_PY_MACHINE          (1)
 #define MICROPY_PY_MACHINE_PULSE    (1)
 #define MICROPY_PY_MACHINE_PIN_MAKE_NEW mp_pin_make_new
@@ -159,7 +157,16 @@
 #define MICROPY_PY_MACHINE_SPI_MAKE_NEW machine_hard_spi_make_new
 #define MICROPY_HW_SOFTSPI_MIN_DELAY (0)
 #define MICROPY_HW_SOFTSPI_MAX_BAUDRATE (HAL_RCC_GetSysClockFreq() / 48)
+#ifndef MICROPY_PY_FRAMEBUF
 #define MICROPY_PY_FRAMEBUF         (1)
+#endif
+
+#ifndef MICROPY_PY_USOCKET
+#define MICROPY_PY_USOCKET          (1)
+#endif
+#ifndef MICROPY_PY_NETWORK
+#define MICROPY_PY_NETWORK          (1)
+#endif
 
 // fatfs configuration used in ffconf.h
 #define MICROPY_FATFS_ENABLE_LFN       (1)
@@ -194,25 +201,35 @@ extern const struct _mp_obj_module_t mp_module_uhashlib;
 extern const struct _mp_obj_module_t mp_module_uos;
 extern const struct _mp_obj_module_t mp_module_utime;
 extern const struct _mp_obj_module_t mp_module_usocket;
+extern const struct _mp_obj_module_t mp_module_network;
 extern const struct _mp_obj_module_t mp_module_onewire;
 
 #if MICROPY_PY_STM
-#define STM_BUILTIN_MODULE               { MP_ROM_QSTR(MP_QSTR_stm), MP_ROM_PTR(&stm_module) },
+#define STM_BUILTIN_MODULE { MP_ROM_QSTR(MP_QSTR_stm), MP_ROM_PTR(&stm_module)},
 #else
 #define STM_BUILTIN_MODULE
 #endif
 
+#if MICROPY_PY_USOCKET
+// usocket implementation provided by skeleton wrapper
+#define SOCKET_BUILTIN_MODULE { MP_ROM_QSTR(MP_QSTR_usocket), MP_ROM_PTR(&mp_module_usocket)},
+#else
 // no usocket module
 #define SOCKET_BUILTIN_MODULE
-#define SOCKET_BUILTIN_MODULE_WEAK_LINKS
+#endif
+
+#if MICROPY_PY_NETWORK
+#define NETWORK_BUILTIN_MODULE { MP_ROM_QSTR(MP_QSTR_network), MP_ROM_PTR(&mp_module_network)},
+#else
+#define NETWORK_BUILTIN_MODULE
+#endif
 
 #if MICROPY_PY_USSL
-#define SSL_BUILTIN_MODULE_WEAK_LINKS       { MP_ROM_QSTR(MP_QSTR_ssl), MP_ROM_PTR(&mp_module_ussl) },
+#define SSL_BUILTIN_MODULE_WEAK_LINKS { MP_ROM_QSTR(MP_QSTR_ssl), MP_ROM_PTR(&mp_module_ussl)},
 #else
 #define SSL_BUILTIN_MODULE_WEAK_LINKS
 #endif
 
-#define NETWORK_BUILTIN_MODULE
 
 #define MICROPY_PORT_BUILTIN_MODULES \
     { MP_ROM_QSTR(MP_QSTR_umachine), MP_ROM_PTR(&machine_module) }, \
@@ -223,25 +240,6 @@ extern const struct _mp_obj_module_t mp_module_onewire;
     SOCKET_BUILTIN_MODULE \
     NETWORK_BUILTIN_MODULE \
     { MP_ROM_QSTR(MP_QSTR__onewire), MP_ROM_PTR(&mp_module_onewire) }, \
-
-#define MICROPY_PORT_BUILTIN_MODULE_WEAK_LINKS \
-    { MP_ROM_QSTR(MP_QSTR_binascii), MP_ROM_PTR(&mp_module_ubinascii) }, \
-    { MP_ROM_QSTR(MP_QSTR_collections), MP_ROM_PTR(&mp_module_collections) }, \
-    { MP_ROM_QSTR(MP_QSTR_re), MP_ROM_PTR(&mp_module_ure) }, \
-    { MP_ROM_QSTR(MP_QSTR_zlib), MP_ROM_PTR(&mp_module_uzlib) }, \
-    { MP_ROM_QSTR(MP_QSTR_json), MP_ROM_PTR(&mp_module_ujson) }, \
-    { MP_ROM_QSTR(MP_QSTR_heapq), MP_ROM_PTR(&mp_module_uheapq) }, \
-    { MP_ROM_QSTR(MP_QSTR_hashlib), MP_ROM_PTR(&mp_module_uhashlib) }, \
-    { MP_ROM_QSTR(MP_QSTR_io), MP_ROM_PTR(&mp_module_io) }, \
-    { MP_ROM_QSTR(MP_QSTR_os), MP_ROM_PTR(&mp_module_uos) }, \
-    { MP_ROM_QSTR(MP_QSTR_random), MP_ROM_PTR(&mp_module_urandom) }, \
-    { MP_ROM_QSTR(MP_QSTR_time), MP_ROM_PTR(&mp_module_utime) }, \
-    { MP_ROM_QSTR(MP_QSTR_select), MP_ROM_PTR(&mp_module_uselect) }, \
-    SOCKET_BUILTIN_MODULE_WEAK_LINKS \
-    SSL_BUILTIN_MODULE_WEAK_LINKS \
-    { MP_ROM_QSTR(MP_QSTR_struct), MP_ROM_PTR(&mp_module_ustruct) }, \
-    { MP_ROM_QSTR(MP_QSTR_machine), MP_ROM_PTR(&machine_module) }, \
-    { MP_ROM_QSTR(MP_QSTR_errno), MP_ROM_PTR(&mp_module_uerrno) }, \
 
 // extra constants
 #define MICROPY_PORT_CONSTANTS \
@@ -362,6 +360,10 @@ static inline mp_uint_t disable_irq(void) {
 #define BIT_BAND(addr, pos)       (*(volatile uint32_t *)( _ALIAS_ADDR((uint32_t)(&addr), pos) ))
 #define BIT_BAND_SET(addr, pos)   BIT_BAND(addr, pos) = 1
 #define BIT_BAND_CLEAR(addr, pos) BIT_BAND(addr, pos) = 0
+
+#define MICROPY_PY_ESP_ENTER   uint32_t irq_state = raise_irq_pri(IRQ_PRI_PENDSV);
+#define MICROPY_PY_ESP_REENTER irq_state = raise_irq_pri(IRQ_PRI_PENDSV);
+#define MICROPY_PY_ESP_EXIT    restore_irq_pri(irq_state);
 
 // We need to provide a declaration/definition of alloca()
 #include <alloca.h>

@@ -27,7 +27,7 @@
 // Common settings and defaults for board configuration.
 // The defaults here should be overridden in mpconfigboard.h.
 
-#include <stm32f1xx_hal.h>
+#include "stm32f1xx_hal.h"
 
 /*****************************************************************************/
 // Feature settings with defaults
@@ -91,6 +91,11 @@
 	#define MICROPY_HW_ENABLE_SDCARD (0)
 #endif
 
+// SD interface bus width (defaults to 4 bits)
+#ifndef MICROPY_HW_SD_BUS_WIDTH
+#define MICROPY_HW_SD_BUS_WIDTH (4)
+#endif
+
 // Whether to automatically mount (and boot from) the SD card if it's present
 #ifndef MICROPY_HW_SDCARD_MOUNT_AT_BOOT
 	#define MICROPY_HW_SDCARD_MOUNT_AT_BOOT (MICROPY_HW_ENABLE_SDCARD)
@@ -131,13 +136,13 @@
 
 #if MICROPY_HW_CLK_USE_HSI
 	// Use HSI as clock source
-	#define MICROPY_HW_CLK_VALUE (HSI_VALUE)
+	#define MICROPY_HW_CLK_VALUE           (HSI_VALUE)
 	#define MICROPY_HW_RCC_OSCILLATOR_TYPE (RCC_OSCILLATORTYPE_HSI)
-	#define MICROPY_HW_RCC_PLL_SRC (RCC_PLLSOURCE_HSI)
-	#define MICROPY_HW_RCC_CR_HSxON (RCC_CR_HSION)
-	#define MICROPY_HW_RCC_HSI_STATE (RCC_HSI_ON)
-	#define MICROPY_HW_RCC_FLAG_HSxRDY (RCC_FLAG_HSIRDY)
-	#define MICROPY_HW_RCC_HSE_STATE (RCC_HSE_OFF)
+	#define MICROPY_HW_RCC_PLL_SRC         (RCC_PLLSOURCE_HSI)
+	#define MICROPY_HW_RCC_CR_HSxON        (RCC_CR_HSION)
+	#define MICROPY_HW_RCC_HSI_STATE       (RCC_HSI_ON)
+	#define MICROPY_HW_RCC_FLAG_HSxRDY     (RCC_FLAG_HSIRDY)
+	#define MICROPY_HW_RCC_HSE_STATE       (RCC_HSE_OFF)
 #else
 	// Use HSE as a clock source (bypass or oscillator)
 	#define MICROPY_HW_CLK_VALUE           (HSE_VALUE)
@@ -147,9 +152,9 @@
 	#define MICROPY_HW_RCC_HSI_STATE       (RCC_HSI_OFF)
 	#define MICROPY_HW_RCC_FLAG_HSxRDY     (RCC_FLAG_HSERDY)
 	#if MICROPY_HW_CLK_USE_BYPASS
-		#define MICROPY_HW_RCC_HSE_STATE (RCC_HSE_BYPASS)
+		#define MICROPY_HW_RCC_HSE_STATE   (RCC_HSE_BYPASS)
 	#else
-		#define MICROPY_HW_RCC_HSE_STATE (RCC_HSE_ON)
+		#define MICROPY_HW_RCC_HSE_STATE   (RCC_HSE_ON)
 	#endif
 #endif
 
@@ -161,8 +166,8 @@
 
 #if MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE
 	// Provide block device macros if internal flash storage is enabled
-	#define MICROPY_HW_BDEV_IOCTL flash_bdev_ioctl
-	#define MICROPY_HW_BDEV_READBLOCK flash_bdev_readblock
+	#define MICROPY_HW_BDEV_IOCTL      flash_bdev_ioctl
+	#define MICROPY_HW_BDEV_READBLOCK  flash_bdev_readblock
 	#define MICROPY_HW_BDEV_WRITEBLOCK flash_bdev_writeblock
 #endif
 
@@ -194,18 +199,20 @@
 	#define MICROPY_HW_USB_CDC_NUM (1)
 #endif
 
+#ifndef MICROPY_HW_USB_CDC_NUM
+    #define MICROPY_HW_USB_CDC_NUM (1)
+#endif
+#ifndef MICROPY_HW_USB_MSC
+    #define MICROPY_HW_USB_MSC (MICROPY_HW_ENABLE_USB)
+#endif
+#ifndef MICROPY_HW_USB_HID
+    #define MICROPY_HW_USB_HID (MICROPY_HW_ENABLE_USB)
+#endif
+
 // Pin definition header file
 #define MICROPY_PIN_DEFS_PORT_H "pin_defs_stm32.h"
 
-#ifndef MICROPY_HW_USB_CDC_NUM
-#define MICROPY_HW_USB_CDC_NUM (1)
-#endif
-#ifndef MICROPY_HW_USB_MSC
-#define MICROPY_HW_USB_MSC (MICROPY_HW_ENABLE_USB)
-#endif
-#ifndef MICROPY_HW_USB_HID
-#define MICROPY_HW_USB_HID (MICROPY_HW_ENABLE_USB)
-#endif
+
 
 #define MP_HAL_CLEANINVALIDATE_DCACHE(addr, size)
 #define MP_HAL_CLEAN_DCACHE(addr, size)

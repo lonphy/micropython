@@ -11,3 +11,7 @@ TEXT0_ADDR = 0x08020000
 else
 LD_FILES = boards/MPY_ST103/mpy_st103.ld boards/common_basic.ld
 endif
+
+MICROPY_PY_ESP826601 = 1
+
+DEBUG?=0

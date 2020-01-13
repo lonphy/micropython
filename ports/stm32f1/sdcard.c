@@ -70,16 +70,21 @@ void sdcard_init(void) {
     // which clocks up to 25MHz maximum.
     // Default SDIO config
     // TODO: the alt pin config error when input
+    mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_CK, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_CK);
+    mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_CMD, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_CMD);
     mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_D0, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_D0);
+    #if MICROPY_HW_SD_BUS_WIDTH == 4
     mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_D1, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_D1);
     mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_D2, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_D2);
     mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_D3, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_D3);
-    mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_CK, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_CK);
-    mp_hal_pin_config_alt_static(MICROPY_HW_SDIO_CMD, MP_HAL_PIN_MODE_ALT, MP_HAL_PIN_PULL_UP, STATIC_AF_SDIO_CMD);
+    #endif
+
 
     // configure the SD card detect pin
     // we do this here so we can detect if the SD card is inserted before powering it on
+    #if defined(MICROPY_HW_SDCARD_DETECT_PIN)
     mp_hal_pin_config(MICROPY_HW_SDCARD_DETECT_PIN, MP_HAL_PIN_MODE_IN, MICROPY_HW_SDCARD_DETECT_PULL, 0);
+    #endif
 }
 
 void HAL_SD_MspInit(SD_HandleTypeDef *hsd) {
@@ -99,7 +104,11 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef *hsd) {
 }
 
 bool sdcard_is_present(void) {
+    #if defined(MICROPY_HW_SDCARD_DETECT_PIN)
     return HAL_GPIO_ReadPin(MICROPY_HW_SDCARD_DETECT_PIN->gpio, MICROPY_HW_SDCARD_DETECT_PIN->pin_mask) == MICROPY_HW_SDCARD_DETECT_PRESENT;
+    #else
+    return true;
+    #endif
 }
 
 STATIC HAL_StatusTypeDef sdcard_hal_init(void) {
@@ -119,13 +128,15 @@ STATIC HAL_StatusTypeDef sdcard_hal_init(void) {
         }
         mp_hal_delay_ms(50);
     }
-
+    
+    #if MICROPY_HW_SD_BUS_WIDTH == 4
     // configure the SD bus width for wide operation
     status = HAL_SD_ConfigWideBusOperation(&sd_handle, SDIO_BUS_WIDE_4B);
     if (status != HAL_OK) {
         HAL_SD_DeInit(&sd_handle);
         return status;
     }
+    #endif
 
     return HAL_OK;
 }
@@ -134,6 +145,10 @@ bool sdcard_power_on(void) {
     if (pyb_sdcard_flags == PYB_SD_FLAG_ACTIVE) {
         return true;
     }
+    
+    #ifdef MICROPY_BOARD_SDCARD_POWER
+    MICROPY_BOARD_SDCARD_POWER
+    #endif
 
     HAL_StatusTypeDef status = HAL_ERROR;
     if (sdcard_is_present()) {
@@ -416,24 +431,24 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(pyb_sdcard_writeblocks_obj, pyb_sdcard_writeblo
 STATIC mp_obj_t pyb_sdcard_ioctl(mp_obj_t self, mp_obj_t cmd_in, mp_obj_t arg_in) {
     mp_int_t cmd = mp_obj_get_int(cmd_in);
     switch (cmd) {
-        case BP_IOCTL_INIT:
+        case MP_BLOCKDEV_IOCTL_INIT:
             if (!sdcard_power_on()) {
                 return MP_OBJ_NEW_SMALL_INT(-1); // error
             }
             return MP_OBJ_NEW_SMALL_INT(0); // success
 
-        case BP_IOCTL_DEINIT:
+        case MP_BLOCKDEV_IOCTL_DEINIT:
             sdcard_power_off();
             return MP_OBJ_NEW_SMALL_INT(0); // success
 
-        case BP_IOCTL_SYNC:
+        case MP_BLOCKDEV_IOCTL_SYNC:
             // nothing to do
             return MP_OBJ_NEW_SMALL_INT(0); // success
 
-        case BP_IOCTL_SEC_COUNT:
+        case MP_BLOCKDEV_IOCTL_BLOCK_COUNT:
             return MP_OBJ_NEW_SMALL_INT(sdcard_get_capacity_in_bytes() / SDCARD_BLOCK_SIZE);
 
-        case BP_IOCTL_SEC_SIZE:
+        case MP_BLOCKDEV_IOCTL_BLOCK_SIZE:
             return MP_OBJ_NEW_SMALL_INT(SDCARD_BLOCK_SIZE);
 
         default: // unknown command
@@ -463,17 +478,17 @@ const mp_obj_type_t pyb_sdcard_type = {
 
 void sdcard_init_vfs(fs_user_mount_t *vfs, int part) {
     vfs->base.type = &mp_fat_vfs_type;
-    vfs->flags |= FSUSER_NATIVE | FSUSER_HAVE_IOCTL;
+    vfs->blockdev.flags |= MP_BLOCKDEV_FLAG_NATIVE | MP_BLOCKDEV_FLAG_HAVE_IOCTL;
     vfs->fatfs.drv = vfs;
     vfs->fatfs.part = part;
-    vfs->readblocks[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_readblocks_obj);
-    vfs->readblocks[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
-    vfs->readblocks[2] = MP_OBJ_FROM_PTR(sdcard_read_blocks); // native version
-    vfs->writeblocks[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_writeblocks_obj);
-    vfs->writeblocks[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
-    vfs->writeblocks[2] = MP_OBJ_FROM_PTR(sdcard_write_blocks); // native version
-    vfs->u.ioctl[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_ioctl_obj);
-    vfs->u.ioctl[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
+    vfs->blockdev.readblocks[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_readblocks_obj);
+    vfs->blockdev.readblocks[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
+    vfs->blockdev.readblocks[2] = MP_OBJ_FROM_PTR(sdcard_read_blocks); // native version
+    vfs->blockdev.writeblocks[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_writeblocks_obj);
+    vfs->blockdev.writeblocks[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
+    vfs->blockdev.writeblocks[2] = MP_OBJ_FROM_PTR(sdcard_write_blocks); // native version
+    vfs->blockdev.u.ioctl[0] = MP_OBJ_FROM_PTR(&pyb_sdcard_ioctl_obj);
+    vfs->blockdev.u.ioctl[1] = MP_OBJ_FROM_PTR(&pyb_sdcard_obj);
 }
 
 #endif // MICROPY_HW_ENABLE_SDCARD
