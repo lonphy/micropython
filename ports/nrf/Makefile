@@ -56,7 +56,6 @@ INC += -I./../../lib/cmsis/inc
 INC += -I./modules/machine
 INC += -I./modules/ubluepy
 INC += -I./modules/music
-INC += -I./modules/random
 INC += -I./modules/ble
 INC += -I./modules/board
 INC += -I../../lib/mp-readline
@@ -151,6 +150,7 @@ SRC_LIB += $(addprefix lib/,\
         libm/asinfacosf.c \
         libm/atanf.c \
         libm/atan2f.c \
+        libm/roundf.c \
 	)
 
 endif
@@ -230,6 +230,7 @@ SRC_C += \
 	pin_named_pins.c \
 	fatfs_port.c \
 	drivers/flash.c \
+	drivers/rng.c \
 	drivers/softpwm.c \
 	drivers/ticker.c \
 	drivers/bluetooth/ble_drv.c \
@@ -292,7 +293,6 @@ DRIVERS_SRC_C += $(addprefix modules/,\
 	music/modmusic.c \
 	music/musictunes.c \
 	ble/modble.c \
-	random/modrandom.c \
 	)
 
 # Custom micropython startup file with smaller interrupt vector table

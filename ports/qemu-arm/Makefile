@@ -7,7 +7,7 @@ QSTR_DEFS = qstrdefsport.h
 # include py core make definitions
 include $(TOP)/py/py.mk
 
-BOARD ?= netduino2
+BOARD ?= mps2-an385
 
 ifeq ($(BOARD),netduino2)
 CFLAGS += -mthumb -mcpu=cortex-m3 -mfloat-abi=soft
@@ -90,6 +90,7 @@ LIB_SRC_C += $(addprefix lib/,\
 	libm/asinfacosf.c \
 	libm/atanf.c \
 	libm/atan2f.c \
+	libm/roundf.c \
 	utils/sys_stdio_mphal.c \
 	)
 
